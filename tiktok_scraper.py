@@ -16,7 +16,7 @@ INSTAGRAM_TOKEN = os.environ.get(“INSTAGRAM_TOKEN”, “”)
 OUTPUT_FILE = “krapmaps_stats.json”
 
 def parse_count(text):
-if not text:
+    if not text:
 return 0
 text = str(text).strip().replace(”,”, “”)
 try:
