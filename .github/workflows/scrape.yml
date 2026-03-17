@@ -1,47 +1,24 @@
-name: KrapMaps Nightly Stats Scraper
-
+name: KrapMaps
 on:
-schedule:
-- cron: ‘0 0 * * *’
-workflow_dispatch:
-
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
 jobs:
-scrape:
-runs-on: ubuntu-latest
-permissions:
-contents: write
-
-```
-steps:
-  - name: Checkout repo
-    uses: actions/checkout@v4
-
-  - name: Set up Python
-    uses: actions/setup-python@v5
-    with:
-      python-version: '3.11'
-
-  - name: Install dependencies
-    run: |
-      pip install playwright
-      playwright install chromium
-      playwright install-deps chromium
-
-  - name: Fix quotes
-    run: python fix.py
-
-  - name: Run scraper
-    env:
-      TIKTOK_USERNAME: ${{ secrets.TIKTOK_USERNAME }}
-      TIKTOK_PASSWORD: ${{ secrets.TIKTOK_PASSWORD }}
-      INSTAGRAM_TOKEN: ${{ secrets.INSTAGRAM_TOKEN }}
-    run: python tiktok_scraper.py
-
-  - name: Commit updated stats
-    run: |
-      git config user.name "KrapMaps Bot"
-      git config user.email "bot@krapmaps.app"
-      git add krapmaps_stats.json
-      git diff --staged --quiet || git commit -m "Auto stats update $(date -u '+%Y-%m-%d %H:%M UTC')"
-      git push
-```
+  scrape:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install playwright && playwright install chromium && playwright install-deps chromium
+      - run: python fix.py
+      - name: Run
+        env:
+          TIKTOK_USERNAME: ${{ secrets.TIKTOK_USERNAME }}
+          TIKTOK_PASSWORD: ${{ secrets.TIKTOK_PASSWORD }}
+          INSTAGRAM_TOKEN: ${{ secrets.INSTAGRAM_TOKEN }}
+        run: python tiktok_scraper.py
+      - run: git config user.name "Bot" && git config user.email "bot@krapmaps.app" && git add krapmaps_stats.json && git diff --staged --quiet || git commit -m "update" && git push
