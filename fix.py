@@ -5,25 +5,25 @@ content = f.read()
 
 # Fix smart quotes
 
-content = content.replace(’\u201c’, ‘”’)
-content = content.replace(’\u201d’, ‘”’)
-content = content.replace(’\u2018’, “’”)
-content = content.replace(’\u2019’, “’”)
+content = content.replace('\u201c’, '"')
+content = content.replace('\u201d’, '"')
+content = content.replace('\u2018’, "'")
+content = content.replace('\u2019’, "'')
 
 # Fix indentation - replace any tab characters with 4 spaces
 
-content = content.replace(’\t’, ’    ’)
+content = content.replace('\t’, '    ')
 
 # Write the whole thing fresh with correct indentation
 
-lines = content.split(’\n’)
+lines = content.split('\n')
 fixed_lines = []
 indent_level = 0
 
 for line in lines:
 stripped = line.strip()
 if not stripped:
-fixed_lines.append(’’)
+fixed_lines.append('')
 continue
 
 ```
@@ -44,9 +44,9 @@ if stripped.startswith(('return', 'pass', 'break', 'continue', 'raise')):
         indent_level -= 1
 ```
 
-content = ‘\n’.join(fixed_lines)
+content = '\n'.join(fixed_lines)
 
-with open(‘tiktok_scraper.py’, ‘w’) as f:
+with open('tiktok_scraper.py, 'w') as f:
 f.write(content)
 
-print(‘Fixed quotes and indentation’)
+print('Fixed quotes and indentation')
