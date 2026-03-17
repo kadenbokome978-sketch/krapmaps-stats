@@ -1,44 +1,47 @@
 name: KrapMaps Nightly Stats Scraper
 
 on:
-  schedule:
-    # Runs every night at midnight UK time (1am BST / midnight GMT)
-    - cron: '0 0 * * *'
-  workflow_dispatch:
-    # Also lets you trigger it manually from GitHub with one click
+schedule:
+- cron: ‘0 0 * * *’
+workflow_dispatch:
 
 jobs:
-  scrape:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write  # needed to commit the stats file back to the repo
+scrape:
+runs-on: ubuntu-latest
+permissions:
+contents: write
 
-    steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+```
+steps:
+  - name: Checkout repo
+    uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+  - name: Set up Python
+    uses: actions/setup-python@v5
+    with:
+      python-version: '3.11'
 
-      - name: Install dependencies
-        run: |
-          pip install playwright
-          playwright install chromium
-          playwright install-deps chromium
+  - name: Install dependencies
+    run: |
+      pip install playwright
+      playwright install chromium
+      playwright install-deps chromium
 
-      - name: Run scraper
-        env:
-          TIKTOK_USERNAME: ${{ secrets.TIKTOK_USERNAME }}
-          TIKTOK_PASSWORD: ${{ secrets.TIKTOK_PASSWORD }}
-          INSTAGRAM_TOKEN: ${{ secrets.INSTAGRAM_TOKEN }}
-        run: python tiktok_scraper.py
+  - name: Fix quotes
+    run: python fix.py
 
-      - name: Commit updated stats
-        run: |
-          git config user.name "KrapMaps Bot"
-          git config user.email "bot@krapmaps.app"
-          git add krapmaps_stats.json
-          git diff --staged --quiet || git commit -m "Auto stats update $(date -u '+%Y-%m-%d %H:%M UTC')"
-          git push
+  - name: Run scraper
+    env:
+      TIKTOK_USERNAME: ${{ secrets.TIKTOK_USERNAME }}
+      TIKTOK_PASSWORD: ${{ secrets.TIKTOK_PASSWORD }}
+      INSTAGRAM_TOKEN: ${{ secrets.INSTAGRAM_TOKEN }}
+    run: python tiktok_scraper.py
+
+  - name: Commit updated stats
+    run: |
+      git config user.name "KrapMaps Bot"
+      git config user.email "bot@krapmaps.app"
+      git add krapmaps_stats.json
+      git diff --staged --quiet || git commit -m "Auto stats update $(date -u '+%Y-%m-%d %H:%M UTC')"
+      git push
+```
