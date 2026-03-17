@@ -1,6 +1,6 @@
 import re
 
-with open(‘tiktok_scraper.py’, ‘r’) as f:
+with open('tiktok_scraper.py', 'r') as f:
 content = f.read()
 
 # Fix smart quotes
