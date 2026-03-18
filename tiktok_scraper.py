@@ -1,114 +1,46 @@
 import os
 import json
 import time
+import base64
+import hashlib
+import hmac
+import struct
+import urllib.request
+import urllib.parse
 from datetime import datetime
-from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
 TIKTOK_USERNAME = os.environ.get(“TIKTOK_USERNAME”, “”)
 TIKTOK_PASSWORD = os.environ.get(“TIKTOK_PASSWORD”, “”)
 INSTAGRAM_TOKEN = os.environ.get(“INSTAGRAM_TOKEN”, “”)
+APPLE_KEY_ID = os.environ.get(“APPLE_KEY_ID”, “”)
+APPLE_ISSUER_ID = os.environ.get(“APPLE_ISSUER_ID”, “”)
+APPLE_PRIVATE_KEY = os.environ.get(“APPLE_PRIVATE_KEY”, “”)
 OUTPUT_FILE = “krapmaps_stats.json”
+TIKTOK_HANDLE = “findkrap”
+
+def log(msg):
+print(”[” + datetime.now().strftime(”%H:%M:%S”) + “] “ + str(msg))
+
+def today_str():
+return datetime.utcnow().strftime(”%Y-%m-%d”)
 
 def parse_count(text):
 if not text:
 return 0
-text = str(text).strip().replace(”,”, “”)
+text = str(text).strip().replace(”,”, “”).replace(” “, “”)
 try:
 if text.upper().endswith(“K”):
 return int(float(text[:-1]) * 1000)
 if text.upper().endswith(“M”):
 return int(float(text[:-1]) * 1000000)
 return int(float(text))
-except (ValueError, TypeError):
-return 0
-
-def log(msg):
-print(”[” + datetime.now().strftime(”%H:%M:%S”) + “] “ + msg)
-
-def today_str():
-return datetime.utcnow().strftime(”%Y-%m-%d”)
-
-def scrape_tiktok(page):
-log(“Going to TikTok login…”)
-page.goto(“https://www.tiktok.com/login/phone-or-email/email”, wait_until=“networkidle”, timeout=30000)
-time.sleep(2)
-try:
-page.fill(“input[name=‘username’]”, TIKTOK_USERNAME)
-time.sleep(0.5)
-page.fill(“input[type=‘password’]”, TIKTOK_PASSWORD)
-time.sleep(0.5)
-page.click(“button[type=‘submit’]”)
-log(“Login submitted…”)
-time.sleep(5)
-except Exception as e:
-log(“Login error: “ + str(e))
-raise
-if page.query_selector(”[id*=‘captcha’]”):
-log(“CAPTCHA detected”)
-return None
-try:
-page.wait_for_url(lambda url: “tiktok.com” in url and “login” not in url, timeout=15000)
-log(“Login successful”)
-except PlaywrightTimeout:
-log(“Login failed”)
-return None
-account_stats = {
-“followers”: 0,
-“total_likes”: 0,
-“total_views”: 0,
-“scraped_at”: datetime.utcnow().isoformat(),
-}
-try:
-page.goto(“https://www.tiktok.com/@findkrap”, wait_until=“networkidle”, timeout=20000)
-time.sleep(2)
-els = page.query_selector_all(”[data-e2e=‘followers-count’]”)
-for el in els:
-text = el.inner_text().strip()
-if text:
-account_stats[“followers”] = parse_count(text)
-log(“Followers: “ + str(account_stats[“followers”]))
-break
-except Exception as e:
-log(“Account error: “ + str(e))
-log(“Scraping videos…”)
-page.goto(“https://www.tiktok.com/creator-studio/analytics/post”, wait_until=“networkidle”, timeout=30000)
-time.sleep(3)
-videos = []
-try:
-for _ in range(5):
-page.evaluate(“window.scrollTo(0, document.body.scrollHeight)”)
-time.sleep(1.5)
-rows = page.query_selector_all(“tr”)
-for row in rows[:30]:
-try:
-cells = row.query_selector_all(“td”)
-if len(cells) >= 3:
-texts = [c.inner_text().strip() for c in cells]
-numbers = [parse_count(t) for t in texts]
-v = {
-“title”: texts[0][:80] if texts[0] else “”,
-“views”: numbers[1] if len(numbers) > 1 else 0,
-“likes”: numbers[2] if len(numbers) > 2 else 0,
-“comments”: numbers[3] if len(numbers) > 3 else 0,
-“shares”: numbers[4] if len(numbers) > 4 else 0,
-“date”: today_str(),
-}
-if v[“views”] > 0 or v[“title”]:
-videos.append(v)
 except Exception:
-continue
-account_stats[“total_views”] = sum(v.get(“views”, 0) for v in videos)
-account_stats[“total_likes”] = sum(v.get(“likes”, 0) for v in videos)
-except Exception as e:
-log(“Video error: “ + str(e))
-log(“Got “ + str(len(videos)) + “ videos”)
-return {“account”: account_stats, “videos”: videos}
+return 0
 
 def fetch_instagram(token):
 if not token:
 log(“No Instagram token”)
 return None
-import urllib.request
 log(“Fetching Instagram…”)
 try:
 url = “https://graph.instagram.com/me?fields=id,username,media_count,followers_count,account_type&access_token=” + token
@@ -141,37 +73,137 @@ except Exception as e:
 log(“Instagram error: “ + str(e))
 return None
 
+def make_apple_jwt(key_id, issuer_id, private_key_pem):
+# Build JWT header and payload
+header = base64.urlsafe_b64encode(json.dumps({“alg”: “ES256”, “kid”: key_id, “typ”: “JWT”}).encode()).rstrip(b”=”).decode()
+now = int(time.time())
+payload = base64.urlsafe_b64encode(json.dumps({“iss”: issuer_id, “iat”: now, “exp”: now + 1200, “aud”: “appstoreconnect-v1”}).encode()).rstrip(b”=”).decode()
+message = header + “.” + payload
+# Sign with ES256 using cryptography library
+try:
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import ec
+private_key = serialization.load_pem_private_key(private_key_pem.encode(), password=None)
+signature = private_key.sign(message.encode(), ec.ECDSA(hashes.SHA256()))
+# Convert DER signature to raw r+s format
+from cryptography.hazmat.primitives.asymmetric.utils import decode_dss_signature
+r, s = decode_dss_signature(signature)
+raw_sig = r.to_bytes(32, “big”) + s.to_bytes(32, “big”)
+sig_b64 = base64.urlsafe_b64encode(raw_sig).rstrip(b”=”).decode()
+return message + “.” + sig_b64
+except Exception as e:
+log(“JWT signing error: “ + str(e))
+return None
+
+def fetch_appstore(key_id, issuer_id, private_key):
+if not key_id or not issuer_id or not private_key:
+log(“No App Store keys”)
+return None
+log(“Fetching App Store stats…”)
+try:
+token = make_apple_jwt(key_id, issuer_id, private_key)
+if not token:
+return None
+# Get app info
+headers = {“Authorization”: “Bearer “ + token, “Content-Type”: “application/json”}
+req = urllib.request.Request(“https://api.appstoreconnect.apple.com/v1/apps?filter[bundleId]=app.krapmaps”, headers=headers)
+with urllib.request.urlopen(req, timeout=15) as r:
+apps_data = json.loads(r.read())
+apps = apps_data.get(“data”, [])
+if not apps:
+log(“No apps found”)
+return None
+app_id = apps[0][“id”]
+app_name = apps[0][“attributes”].get(“name”, “KrapMaps”)
+log(“Found app: “ + app_name + “ id: “ + app_id)
+# Get sales summary - last 7 days
+end = datetime.utcnow().strftime(”%Y-%m-%d”)
+req2 = urllib.request.Request(
+“https://api.appstoreconnect.apple.com/v1/salesReports?filter[frequency]=DAILY&filter[reportDate]=” + end + “&filter[reportType]=SALES&filter[vendorNumber]=&filter[version]=1_0”,
+headers=headers
+)
+# Try to get installs from analytics
+req3 = urllib.request.Request(
+“https://api.appstoreconnect.apple.com/v1/apps/” + app_id + “/appStoreVersions”,
+headers=headers
+)
+with urllib.request.urlopen(req3, timeout=15) as r:
+versions = json.loads(r.read())
+log(“App Store connected successfully”)
+return {
+“app_id”: app_id,
+“app_name”: app_name,
+“scraped_at”: datetime.utcnow().isoformat(),
+}
+except Exception as e:
+log(“App Store error: “ + str(e))
+return None
+
+def scrape_tiktok_profile():
+log(“Fetching TikTok profile via oEmbed…”)
+try:
+url = “https://www.tiktok.com/oembed?url=https://www.tiktok.com/@” + TIKTOK_HANDLE
+req = urllib.request.Request(url, headers={“User-Agent”: “Mozilla/5.0”})
+with urllib.request.urlopen(req, timeout=10) as r:
+data = json.loads(r.read())
+log(“TikTok oEmbed: “ + str(data.get(“author_name”, “”)))
+return {“author_name”: data.get(“author_name”), “scraped_at”: datetime.utcnow().isoformat()}
+except Exception as e:
+log(“TikTok oEmbed error: “ + str(e))
+
+```
+log("Trying TikTok profile page...")
+try:
+    url = "https://www.tiktok.com/@" + TIKTOK_HANDLE
+    req = urllib.request.Request(url, headers={
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15",
+        "Accept": "text/html",
+    })
+    with urllib.request.urlopen(req, timeout=15) as r:
+        html = r.read().decode("utf-8", errors="ignore")
+    import re
+    followers = re.search(r'"followerCount":(\d+)', html)
+    likes = re.search(r'"heartCount":(\d+)', html)
+    videos = re.search(r'"videoCount":(\d+)', html)
+    result = {
+        "followers": int(followers.group(1)) if followers else 0,
+        "total_likes": int(likes.group(1)) if likes else 0,
+        "video_count": int(videos.group(1)) if videos else 0,
+        "scraped_at": datetime.utcnow().isoformat(),
+    }
+    log("TikTok profile: " + str(result["followers"]) + " followers")
+    return result
+except Exception as e:
+    log("TikTok profile error: " + str(e))
+    return None
+```
+
 def main():
-log(“Starting…”)
+log(“KrapMaps scraper starting…”)
 result = {
 “scraped_at”: datetime.utcnow().isoformat(),
 “tiktok”: None,
 “instagram”: None,
+“appstore”: None,
 }
-result[“instagram”] = fetch_instagram(INSTAGRAM_TOKEN)
-if not TIKTOK_USERNAME or not TIKTOK_PASSWORD:
-log(“No TikTok credentials”)
-else:
-with sync_playwright() as pw:
-browser = pw.chromium.launch(
-headless=True,
-args=[”–no-sandbox”, “–disable-setuid-sandbox”, “–disable-dev-shm-usage”]
-)
-context = browser.new_context(
-viewport={“width”: 1280, “height”: 800},
-user_agent=“Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36”
-)
-page = context.new_page()
-try:
-result[“tiktok”] = scrape_tiktok(page)
-except Exception as e:
-log(“TikTok failed: “ + str(e))
-finally:
-browser.close()
-with open(OUTPUT_FILE, “w”) as f:
-json.dump(result, f, indent=2)
-log(“Saved.”)
-log(“Done.”)
+
+```
+result["instagram"] = fetch_instagram(INSTAGRAM_TOKEN)
+result["tiktok"] = scrape_tiktok_profile()
+result["appstore"] = fetch_appstore(APPLE_KEY_ID, APPLE_ISSUER_ID, APPLE_PRIVATE_KEY)
+
+with open(OUTPUT_FILE, "w") as f:
+    json.dump(result, f, indent=2)
+
+log("Saved to " + OUTPUT_FILE)
+if result["tiktok"]:
+    log("TikTok: " + str(result["tiktok"].get("followers", 0)) + " followers")
+if result["instagram"]:
+    log("Instagram: " + str(result["instagram"].get("followers", 0)) + " followers")
+if result["appstore"]:
+    log("App Store: connected")
+log("Done.")
+```
 
 if **name** == “**main**”:
 main()
