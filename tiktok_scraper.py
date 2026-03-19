@@ -45,13 +45,20 @@ def scrape_tiktok_profile():
         followers = re.search(r'"followerCount":(\d+)', html)
         likes = re.search(r'"heartCount":(\d+)', html)
         videos = re.search(r'"videoCount":(\d+)', html)
+        # Total views shown on public profile
+        views = re.search(r'"playCount":(\d+)', html)
+        if not views:
+            views = re.search(r'"viewerCount":(\d+)', html)
+        if not views:
+            views = re.search(r'"statsV2".*?"playCount":"(\d+)"', html)
         result = {
             "followers": int(followers.group(1)) if followers else 0,
             "total_likes": int(likes.group(1)) if likes else 0,
             "video_count": int(videos.group(1)) if videos else 0,
+            "total_views": int(views.group(1)) if views else 0,
             "scraped_at": datetime.utcnow().isoformat(),
         }
-        log("TikTok: " + str(result["followers"]) + " followers")
+        log("TikTok: " + str(result["followers"]) + " followers, " + str(result["total_views"]) + " views")
         return result
     except Exception as e:
         log("TikTok error: " + str(e))
@@ -196,7 +203,7 @@ def main():
     push_to_supabase(result)
     log("Saved.")
     if result["tiktok"]:
-        log("TikTok: " + str(result["tiktok"].get("followers", 0)) + " followers")
+        log("TikTok: " + str(result["tiktok"].get("followers", 0)) + " followers, " + str(result["tiktok"].get("total_views", 0)) + " views")
     if result["instagram"]:
         log("Instagram: " + str(result["instagram"].get("followers", 0)) + " followers")
     if result["appstore"]:
