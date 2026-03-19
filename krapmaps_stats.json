@@ -1,5 +1,9 @@
 {
-  "scraped_at": null,
-  "tiktok": null,
-  "instagram": null
+  "scraped_at": "2026-03-19T01:55:45.957373",
+  "tiktok": {
+    "author_name": "KrapMaps",
+    "scraped_at": "2026-03-19T01:55:46.281581"
+  },
+  "instagram": null,
+  "appstore": null
 }
