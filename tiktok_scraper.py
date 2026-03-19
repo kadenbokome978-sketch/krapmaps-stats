@@ -10,7 +10,8 @@ INSTAGRAM_TOKEN = os.environ.get("INSTAGRAM_TOKEN", "")
 APPLE_KEY_ID = os.environ.get("APPLE_KEY_ID", "")
 APPLE_ISSUER_ID = os.environ.get("APPLE_ISSUER_ID", "")
 APPLE_PRIVATE_KEY = os.environ.get("APPLE_PRIVATE_KEY", "")
-APPLE_BUNDLE_ID = os.environ.get("APPLE_BUNDLE_ID", "app.krapmaps")
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://xiudsyiinkqtmowkiqxh.supabase.co")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhpdWRzeWlpbmtxdG1vd2tpcXhoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM4NzU5OTcsImV4cCI6MjA4OTQ1MTk5N30.8aHpQIcEcrDXo9DJN52SWAOee-rrkp-ti00h72-_sZE")
 OUTPUT_FILE = "krapmaps_stats.json"
 TIKTOK_HANDLE = "findkrap"
 
@@ -112,13 +113,12 @@ def make_apple_jwt(key_id, issuer_id, private_key_pem):
         log("JWT error: " + str(e))
         return None
 
-def fetch_appstore(key_id, issuer_id, private_key, bundle_id):
+def fetch_appstore(key_id, issuer_id, private_key):
     if not key_id or not issuer_id or not private_key:
         log("No App Store keys")
         return None
     log("Fetching App Store...")
     try:
-        # Fix key formatting - ensure proper line breaks
         key = private_key.strip()
         if "\\n" in key:
             key = key.replace("\\n", "\n")
@@ -129,7 +129,6 @@ def fetch_appstore(key_id, issuer_id, private_key, bundle_id):
             "Authorization": "Bearer " + token,
             "Content-Type": "application/json",
         }
-        # Get all apps
         req = urllib.request.Request(
             "https://api.appstoreconnect.apple.com/v1/apps",
             headers=headers
@@ -138,7 +137,7 @@ def fetch_appstore(key_id, issuer_id, private_key, bundle_id):
             apps_data = json.loads(r.read())
         apps = apps_data.get("data", [])
         if not apps:
-            log("No apps found - check API key permissions")
+            log("No apps found")
             return None
         app = apps[0]
         app_id = app["id"]
@@ -154,6 +153,33 @@ def fetch_appstore(key_id, issuer_id, private_key, bundle_id):
         log("App Store error: " + str(e))
         return None
 
+def push_to_supabase(result):
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        log("No Supabase config")
+        return
+    log("Pushing to Supabase...")
+    try:
+        data = json.dumps({
+            "id": 1,
+            "value": json.dumps(result),
+            "updated_at": datetime.utcnow().isoformat()
+        }).encode()
+        req = urllib.request.Request(
+            SUPABASE_URL + "/rest/v1/km_scraped_stats",
+            data=data,
+            headers={
+                "apikey": SUPABASE_KEY,
+                "Authorization": "Bearer " + SUPABASE_KEY,
+                "Content-Type": "application/json",
+                "Prefer": "resolution=merge-duplicates",
+            },
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=10) as r:
+            log("Supabase updated: " + str(r.status))
+    except Exception as e:
+        log("Supabase error: " + str(e))
+
 def main():
     log("KrapMaps scraper starting...")
     result = {
@@ -164,9 +190,10 @@ def main():
     }
     result["instagram"] = fetch_instagram(INSTAGRAM_TOKEN)
     result["tiktok"] = scrape_tiktok_profile()
-    result["appstore"] = fetch_appstore(APPLE_KEY_ID, APPLE_ISSUER_ID, APPLE_PRIVATE_KEY, APPLE_BUNDLE_ID)
+    result["appstore"] = fetch_appstore(APPLE_KEY_ID, APPLE_ISSUER_ID, APPLE_PRIVATE_KEY)
     with open(OUTPUT_FILE, "w") as f:
         json.dump(result, f, indent=2)
+    push_to_supabase(result)
     log("Saved.")
     if result["tiktok"]:
         log("TikTok: " + str(result["tiktok"].get("followers", 0)) + " followers")
