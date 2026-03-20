@@ -1,8 +1,10 @@
-name: KrapMaps Nightly Stats Scraper
+name: KrapMaps Stats Scraper
 on:
   schedule:
-    - cron: '0 0 * * *'
-  workflow_dispatch:
+    - cron: '0 */6 * * *'   # Every 6 hours — keeps workflow alive + more frequent updates
+  workflow_dispatch:          # Manual trigger always available
+  push:
+    branches: [main]          # Runs on push too — prevents GitHub disabling it
 jobs:
   scrape:
     runs-on: ubuntu-latest
@@ -13,8 +15,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - name: Install
-        run: pip install cryptography
+      - name: Install dependencies
+        run: pip install cryptography requests
       - name: Run scraper
         env:
           INSTAGRAM_TOKEN: ${{ secrets.INSTAGRAM_TOKEN }}
@@ -24,10 +26,11 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python tiktok_scraper.py
-      - name: Save stats
+      - name: Commit stats
         run: |
           git config user.name "KrapMaps Bot"
           git config user.email "bot@krapmaps.app"
-          git add krapmaps_stats.json
-          git diff --staged --quiet || git commit -m "Auto update"
+          echo "$(date -u '+%Y-%m-%d %H:%M UTC')" > last_run.txt
+          git add krapmaps_stats.json last_run.txt
+          git commit -m "stats: auto update $(date -u '+%Y-%m-%d %H:%M UTC')"
           git push
