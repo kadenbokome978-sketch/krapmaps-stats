@@ -1,0 +1,14 @@
+{
+  "name": "agent-ecosystem-relay",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Relay server that bridges agent status/events into the pixel-art agent ecosystem dashboard",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.18.0"
+  }
+}
