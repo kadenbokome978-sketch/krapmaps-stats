@@ -114,6 +114,31 @@
   .switch.on{border-color:var(--bridge); box-shadow:0 0 8px rgba(57,255,143,0.4);}
   .switch.on .knob{left:19px;background:var(--bridge); box-shadow:0 0 6px var(--bridge);}
 
+  #relayUrl{
+    font-family:inherit;
+    font-size:9px;
+    background:#0f1320;
+    border:1px solid var(--panel-line);
+    color:var(--text-dim);
+    padding:6px 8px;
+    width:170px;
+  }
+  #relayUrl:focus{ outline:none; border-color:var(--radar); color:var(--text); }
+  .relay-status{
+    font-size:9px;
+    letter-spacing:1px;
+    padding:5px 8px;
+    border:1px solid var(--panel-line);
+    color:var(--text-dim);
+    text-transform:uppercase;
+    white-space:nowrap;
+  }
+  .relay-status.live{ color:var(--ok); border-color:var(--ok); box-shadow:0 0 6px rgba(57,255,143,0.4); }
+  .relay-status.connecting{ color:var(--warn); border-color:var(--warn); }
+  .relay-status.error{ color:var(--danger); border-color:var(--danger); }
+  .btn:disabled{ opacity:0.35; cursor:not-allowed; }
+  .btn:disabled:hover{ border-color:var(--panel-line); color:var(--text); box-shadow:none; }
+
   /* ---------- Main layout ---------- */
   #main{
     display:grid;
@@ -612,6 +637,12 @@
         AUTONOMY
         <div class="switch on" id="masterSwitch"><div class="knob"></div></div>
       </div>
+      <div class="master-toggle">
+        LIVE FEED
+        <div class="switch" id="liveSwitch"><div class="knob"></div></div>
+      </div>
+      <input id="relayUrl" type="text" value="ws://localhost:8787/live" spellcheck="false" title="Relay WebSocket URL" />
+      <span id="relayStatus" class="relay-status">DEMO</span>
       <button class="btn" id="btnAction">▶ Simulate Agent Action</button>
       <button class="btn warn" id="btnRoomEvent">⚡ Trigger Room Event</button>
       <button class="btn danger" id="btnAlert">⚠ Simulate Alert</button>
@@ -688,26 +719,32 @@
 
   var state = {
     autonomous: true,
+    mode: 'demo', /* 'demo' | 'live' */
     agents: {},
+    pending: {}, /* id -> resolveFn, for proposal/error cards awaiting a decision */
     feedIdCounter: 0
   };
 
-  AGENTS.forEach(function(a, i){
-    state.agents[a.id] = {
-      id:a.id,
-      name:a.name,
-      room:a.room,
-      palette: AGENT_PALETTE[a.colorIdx],
-      color: pickAgentColor(i),
-      status: i === 4 ? 'paused' : 'active',
-      task: i === 4 ? 'Paused (Rate Limit)' : pick(TASKS_BY_ROOM[a.room]),
-      x: 20 + Math.random()*50,
-      y: 40 + Math.random()*40,
-      facing: 1,
-      walking:false,
-      timer: i === 4 ? 118*60 : 0 /* seconds, only meaningful when paused */
-    };
-  });
+  function seedDemoAgents(){
+    state.agents = {};
+    AGENTS.forEach(function(a, i){
+      state.agents[a.id] = {
+        id:a.id,
+        name:a.name,
+        room:a.room,
+        palette: AGENT_PALETTE[a.colorIdx],
+        color: pickAgentColor(i),
+        status: i === 4 ? 'paused' : 'active',
+        task: i === 4 ? 'Paused (Rate Limit)' : pick(TASKS_BY_ROOM[a.room]),
+        x: 20 + Math.random()*50,
+        y: 40 + Math.random()*40,
+        facing: 1,
+        walking:false,
+        timer: i === 4 ? 118*60 : 0 /* seconds, only meaningful when paused */
+      };
+    });
+  }
+  seedDemoAgents();
 
   function pickAgentColor(i){
     var colors = ['#39ff8f','#38e4ff','#ffd75e','#b464ff','#ff9d2b','#ff6bd6'];
@@ -715,6 +752,21 @@
   }
   function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
   function randRange(a,b){ return a + Math.random()*(b-a); }
+
+  /* deterministic color/palette assignment for agents that arrive from a
+     live relay feed (rather than the fixed demo AGENTS list above) */
+  function hashStr(s){
+    var h = 0;
+    for(var i=0;i<s.length;i++){ h = (h*31 + s.charCodeAt(i))|0; }
+    return Math.abs(h);
+  }
+  function colorForId(id){
+    var colors = ['#39ff8f','#38e4ff','#ffd75e','#b464ff','#ff9d2b','#ff6bd6'];
+    return colors[hashStr(id) % colors.length];
+  }
+  function paletteForId(id){
+    return AGENT_PALETTE[hashStr(id) % AGENT_PALETTE.length];
+  }
 
   /* ======================= ROOM DECOR ======================= */
 
@@ -908,6 +960,75 @@
     });
   }
 
+  function relocateAgentLive(id, newRoom, x, y){
+    var a = state.agents[id];
+    var oldEl = document.getElementById('sprite-'+id);
+    if(oldEl) oldEl.remove();
+    a.room = newRoom;
+    a.x = typeof x === 'number' ? x : 10 + Math.random()*20;
+    a.y = typeof y === 'number' ? y : 40 + Math.random()*30;
+    var room = document.getElementById('room-'+newRoom);
+    var el = document.createElement('div');
+    el.id = 'sprite-'+id;
+    room.appendChild(el);
+    rebuildSingleSprite(id);
+  }
+
+  /**
+   * Create or update an agent from a canonical `agent_update` event coming
+   * from the relay. See pixel-agent-ecosystem/server/README.md for the
+   * event shape.
+   */
+  function upsertAgent(data){
+    if(!data || !data.id) return;
+    var id = data.id;
+    var isNew = !state.agents[id];
+    if(isNew){
+      state.agents[id] = {
+        id:id,
+        name: data.name || id,
+        room: data.room || 'bridge',
+        palette: paletteForId(id),
+        color: colorForId(id),
+        status: 'active',
+        task: '',
+        x: 10 + Math.random()*60,
+        y: 30 + Math.random()*40,
+        facing: 1,
+        walking:false,
+        timer: 0
+      };
+    }
+    var a = state.agents[id];
+    var roomChanged = !isNew && data.room && data.room !== a.room;
+    if(data.name) a.name = data.name;
+    if(data.status) a.status = data.status;
+    if(typeof data.task === 'string') a.task = data.task;
+    if(typeof data.timer === 'number') a.timer = data.timer;
+
+    if(isNew){
+      var room = document.getElementById('room-'+a.room);
+      var el = document.createElement('div');
+      el.id = 'sprite-'+id;
+      room.appendChild(el);
+      rebuildSingleSprite(id);
+    } else if(roomChanged){
+      relocateAgentLive(id, data.room, data.x, data.y);
+    } else {
+      if(typeof data.x === 'number') a.x = data.x;
+      if(typeof data.y === 'number') a.y = data.y;
+      refreshAgentDOM(id);
+    }
+  }
+
+  function applySnapshot(evt){
+    document.querySelectorAll('.agent').forEach(function(el){ el.remove(); });
+    state.agents = {};
+    (evt.agents || []).forEach(function(a){ upsertAgent(a); });
+    renderRoster();
+    addFeedEntry('info', 'Snapshot received — ' + (evt.agents || []).length + ' agents online.');
+  }
+
   /* ======================= FEED ======================= */
 
   var feedEl = document.getElementById('feed');
@@ -967,125 +1088,154 @@
     return entry;
   }
 
+  /**
+   * Registers a pending proposal/error card. `onResolve(outcome)` is called
+   * once, whether the resolution came from a local button click or (in live
+   * mode) a `resolved` event echoed back from the relay.
+   */
+  function registerPending(id, onResolve){
+    state.pending[id] = onResolve;
+  }
+
+  function resolvePendingItem(id, outcome, fromServer){
+    var onResolve = state.pending[id];
+    if(!onResolve) return;
+    delete state.pending[id];
+    onResolve(outcome);
+    if(!fromServer && state.mode === 'live'){
+      sendOperatorAction(id, outcome);
+    }
+  }
+
+  /**
+   * Builds the card DOM shared by proposals and error alerts.
+   * kind: 'proposal' | 'error'. meta: {title, body}.
+   * onResolve(outcome) runs the kind-specific side effects once resolved
+   * (either 'approved'/'rejected' for proposals, or 'retry'/'terminate'
+   * for errors).
+   */
+  function createDecisionCard(id, kind, meta){
+    var entry = document.createElement('div');
+    entry.className = 'entry ' + (kind === 'proposal' ? 'proposal' : 'error');
+    var metaRow = document.createElement('div');
+    metaRow.className = 'meta';
+    var time = new Date();
+    metaRow.innerHTML = '<span>'+String(time.getHours()).padStart(2,'0')+':'+String(time.getMinutes()).padStart(2,'0')+'</span><span class="tag">'+(kind === 'proposal' ? 'PROPOSAL' : 'ALERT')+'</span>';
+    var title = document.createElement('div');
+    title.className = 'msg';
+    title.style.color = kind === 'proposal' ? '#b464ff' : 'var(--danger)';
+    title.textContent = meta.title;
+    var body = document.createElement('div');
+    body.className = 'msg';
+    body.style.marginTop = '3px';
+    body.textContent = meta.body;
+
+    var actions = document.createElement('div');
+    actions.className = 'proposal-actions';
+    var leftBtn = document.createElement('button');
+    leftBtn.className = 'pbtn approve';
+    leftBtn.textContent = kind === 'proposal' ? 'Approve' : 'Retry';
+    var rightBtn = document.createElement('button');
+    rightBtn.className = 'pbtn reject';
+    rightBtn.textContent = kind === 'proposal' ? 'Reject' : 'Terminate';
+
+    var leftOutcome = kind === 'proposal' ? 'approved' : 'retry';
+    var rightOutcome = kind === 'proposal' ? 'rejected' : 'terminate';
+    leftBtn.addEventListener('click', function(){ resolvePendingItem(id, leftOutcome); });
+    rightBtn.addEventListener('click', function(){ resolvePendingItem(id, rightOutcome); });
+
+    actions.appendChild(leftBtn);
+    actions.appendChild(rightBtn);
+    entry.appendChild(metaRow);
+    entry.appendChild(title);
+    entry.appendChild(body);
+    entry.appendChild(actions);
+    feedEl.appendChild(entry);
+    feedEl.scrollTop = feedEl.scrollHeight;
+
+    return {
+      markResolved: function(outcome){
+        actions.remove();
+        entry.classList.add('resolved');
+        var approved = outcome === 'approved' || outcome === 'retry';
+        var tag = document.createElement('div');
+        tag.className = 'resolved-tag ' + (approved ? 'approved' : 'rejected');
+        tag.textContent = (approved ? '✔ ' : '✘ ') + (kind === 'proposal'
+          ? (approved ? 'Approved by operator' : 'Rejected by operator')
+          : (approved ? 'Retry issued' : 'Terminated'));
+        entry.appendChild(tag);
+      }
+    };
+  }
+
   function addProposalEntry(){
     var t = pick(PROPOSAL_TEMPLATES);
     var agentIds = Object.keys(state.agents);
     var agent = state.agents[pick(agentIds)];
     var text = t.body.replace('{name}', agent.name).replace('{room}', agent.room);
-
-    var entry = document.createElement('div');
-    entry.className = 'entry proposal';
-    var metaRow = document.createElement('div');
-    metaRow.className = 'meta';
-    var time = new Date();
-    var hh = String(time.getHours()).padStart(2,'0');
-    var mm = String(time.getMinutes()).padStart(2,'0');
-    metaRow.innerHTML = '<span>'+hh+':'+mm+'</span><span class="tag">PROPOSAL</span>';
-    var title = document.createElement('div');
-    title.className = 'msg';
-    title.style.color = '#b464ff';
-    title.textContent = t.title;
-    var body = document.createElement('div');
-    body.className = 'msg';
-    body.style.marginTop='3px';
-    body.textContent = text;
-
-    var actions = document.createElement('div');
-    actions.className = 'proposal-actions';
-    var approveBtn = document.createElement('button');
-    approveBtn.className = 'pbtn approve';
-    approveBtn.textContent = 'Approve';
-    var rejectBtn = document.createElement('button');
-    rejectBtn.className = 'pbtn reject';
-    rejectBtn.textContent = 'Reject';
-
-    function resolve(kind){
-      actions.remove();
-      entry.classList.add('resolved');
-      var tag = document.createElement('div');
-      tag.className = 'resolved-tag ' + (kind === 'approved' ? 'approved' : 'rejected');
-      tag.textContent = kind === 'approved' ? '✔ Approved by operator' : '✘ Rejected by operator';
-      entry.appendChild(tag);
-      addFeedEntry(kind === 'approved' ? 'success' : 'warning',
-        agent.name + '\'s proposal was ' + kind + '.');
-    }
-    approveBtn.addEventListener('click', function(){ resolve('approved'); });
-    rejectBtn.addEventListener('click', function(){ resolve('rejected'); });
-
-    actions.appendChild(approveBtn);
-    actions.appendChild(rejectBtn);
-    entry.appendChild(metaRow);
-    entry.appendChild(title);
-    entry.appendChild(body);
-    entry.appendChild(actions);
-    feedEl.appendChild(entry);
-    feedEl.scrollTop = feedEl.scrollHeight;
+    var id = 'proposal-'+(++state.feedIdCounter);
+    var card = createDecisionCard(id, 'proposal', { title:t.title, body:text });
+    registerPending(id, function(outcome){
+      card.markResolved(outcome);
+      addFeedEntry(outcome === 'approved' ? 'success' : 'warning', agent.name + '\'s proposal was ' + outcome + '.');
+    });
   }
 
   function addErrorAlert(){
     var agentIds = Object.keys(state.agents);
-    var id = pick(agentIds);
-    var agent = state.agents[id];
+    var aid = pick(agentIds);
+    var agent = state.agents[aid];
     agent.status = 'error';
     agent.task = 'Error — awaiting operator input';
-    refreshAgentDOM(id);
+    refreshAgentDOM(aid);
     renderRoster();
 
-    var entry = document.createElement('div');
-    entry.className = 'entry error';
-    var metaRow = document.createElement('div');
-    metaRow.className = 'meta';
-    var time = new Date();
-    metaRow.innerHTML = '<span>'+String(time.getHours()).padStart(2,'0')+':'+String(time.getMinutes()).padStart(2,'0')+'</span><span class="tag">ALERT</span>';
-    var title = document.createElement('div');
-    title.className = 'msg';
-    title.style.color = 'var(--danger)';
-    title.textContent = agent.name + ' encountered a critical error';
-    var body = document.createElement('div');
-    body.className = 'msg';
-    body.style.marginTop='3px';
-    body.textContent = 'Unhandled exception in ' + agent.room + ' workspace. Manual intervention requested.';
-
-    var actions = document.createElement('div');
-    actions.className = 'proposal-actions';
-    var retryBtn = document.createElement('button');
-    retryBtn.className = 'pbtn approve';
-    retryBtn.textContent = 'Retry';
-    var killBtn = document.createElement('button');
-    killBtn.className = 'pbtn reject';
-    killBtn.textContent = 'Terminate';
-
-    function resolve(kind){
-      actions.remove();
-      entry.classList.add('resolved');
-      var tag = document.createElement('div');
-      if(kind === 'retry'){
-        tag.className = 'resolved-tag approved';
-        tag.textContent = '✔ Retry issued';
+    var id = 'error-'+(++state.feedIdCounter);
+    var card = createDecisionCard(id, 'error', {
+      title: agent.name + ' encountered a critical error',
+      body: 'Unhandled exception in ' + agent.room + ' workspace. Manual intervention requested.'
+    });
+    registerPending(id, function(outcome){
+      card.markResolved(outcome);
+      if(outcome === 'retry'){
         agent.status = 'active';
         agent.task = pick(TASKS_BY_ROOM[agent.room]);
       } else {
-        tag.className = 'resolved-tag rejected';
-        tag.textContent = '✘ Terminated';
         agent.status = 'idle';
         agent.task = 'Terminated — awaiting restart';
       }
-      refreshAgentDOM(id);
+      refreshAgentDOM(aid);
       renderRoster();
-      entry.appendChild(tag);
-      addFeedEntry(kind === 'retry' ? 'success' : 'warning', agent.name + ' ' + (kind==='retry' ? 'resumed after retry.' : 'was terminated by operator.'));
-    }
-    retryBtn.addEventListener('click', function(){ resolve('retry'); });
-    killBtn.addEventListener('click', function(){ resolve('kill'); });
+      addFeedEntry(outcome === 'retry' ? 'success' : 'warning', agent.name + ' ' + (outcome === 'retry' ? 'resumed after retry.' : 'was terminated by operator.'));
+    });
+  }
 
-    actions.appendChild(retryBtn);
-    actions.appendChild(killBtn);
-    entry.appendChild(metaRow);
-    entry.appendChild(title);
-    entry.appendChild(body);
-    entry.appendChild(actions);
-    feedEl.appendChild(entry);
-    feedEl.scrollTop = feedEl.scrollHeight;
+  /* live-mode counterparts: card content comes from the relay instead of
+     being generated locally, but resolution flows through the same
+     registerPending/resolvePendingItem machinery so buttons behave
+     identically either way. */
+  function renderLiveProposal(evt){
+    var id = evt.id || ('proposal-live-'+(++state.feedIdCounter));
+    var card = createDecisionCard(id, 'proposal', {
+      title: evt.title || 'New proposal',
+      body: evt.body || ''
+    });
+    registerPending(id, function(outcome){
+      card.markResolved(outcome);
+      addFeedEntry(outcome === 'approved' ? 'success' : 'warning', (evt.agentName || 'Agent') + '\'s proposal was ' + outcome + '.');
+    });
+  }
+
+  function renderLiveErrorAlert(evt){
+    var id = evt.id || ('error-live-'+(++state.feedIdCounter));
+    var card = createDecisionCard(id, 'error', {
+      title: evt.title || ((evt.agentName || 'Agent') + ' encountered an error'),
+      body: evt.body || ''
+    });
+    registerPending(id, function(outcome){
+      card.markResolved(outcome);
+      addFeedEntry(outcome === 'retry' ? 'success' : 'warning', (evt.agentName || 'Agent') + ' ' + (outcome === 'retry' ? 'retry issued.' : 'terminated.'));
+    });
   }
 
   /* ======================= ROSTER ======================= */
@@ -1145,6 +1295,7 @@
   /* ======================= SIMULATION LOOP ======================= */
 
   function simulateAgentAction(){
+    if(state.mode !== 'demo') return;
     var ids = Object.keys(state.agents).filter(function(id){
       return state.agents[id].status === 'active';
     });
@@ -1173,6 +1324,7 @@
   }
 
   function triggerRoomEvent(){
+    if(state.mode !== 'demo') return;
     var rooms = Object.keys(ROOM_COLORS);
     var r = pick(rooms);
     var el = document.getElementById('room-'+r);
@@ -1183,6 +1335,7 @@
   }
 
   function simulateAlert(){
+    if(state.mode !== 'demo') return;
     var roll = Math.random();
     if(roll < 0.5){
       addProposalEntry();
@@ -1192,6 +1345,7 @@
   }
 
   function pauseRandomAgentForRateLimit(){
+    if(state.mode !== 'demo') return;
     var ids = Object.keys(state.agents).filter(function(id){ return state.agents[id].status === 'active'; });
     if(ids.length === 0) return;
     var id = pick(ids);
@@ -1205,8 +1359,10 @@
     addFeedEntry('warning', a.name + ' hit a rate limit. Resuming in ' + formatTimer(a.timer) + '.');
   }
 
-  /* per-second timer tick for paused agents */
+  /* per-second timer tick for paused agents (demo mode only - in live mode
+     the relay is the source of truth for timer values) */
   setInterval(function(){
+    if(state.mode !== 'demo') return;
     Object.keys(state.agents).forEach(function(id){
       var a = state.agents[id];
       if(a.status === 'paused' && a.timer > 0){
@@ -1224,12 +1380,121 @@
     });
   }, 1000);
 
-  /* autonomous background sim ticks */
+  /* autonomous background sim ticks (demo mode only) */
   var actionTicker, alertTicker, rateLimitTicker;
   function startAutonomousTicks(){
+    stopAutonomousTicks();
     actionTicker = setInterval(function(){ if(state.autonomous) simulateAgentAction(); }, 4000);
     alertTicker = setInterval(function(){ if(state.autonomous && Math.random() < 0.5) simulateAlert(); }, 14000);
     rateLimitTicker = setInterval(function(){ if(state.autonomous && Math.random() < 0.4) pauseRandomAgentForRateLimit(); }, 20000);
+  }
+  function stopAutonomousTicks(){
+    clearInterval(actionTicker);
+    clearInterval(alertTicker);
+    clearInterval(rateLimitTicker);
+  }
+
+  /* ======================= LIVE RELAY CONNECTION ======================= */
+
+  var ws = null;
+
+  function relayHttpBase(){
+    return relayUrlInput.value.trim().replace(/^ws/, 'http').replace(/\/live\/?$/, '');
+  }
+
+  function sendOperatorAction(id, action){
+    if(ws && ws.readyState === WebSocket.OPEN){
+      ws.send(JSON.stringify({ type:'operator_action', id:id, action:action }));
+      return;
+    }
+    fetch(relayHttpBase() + '/operator-action', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ id:id, action:action })
+    }).catch(function(){
+      addFeedEntry('warning', 'Failed to reach relay with operator action.');
+    });
+  }
+
+  function handleRelayEvent(evt){
+    switch(evt.type){
+      case 'snapshot': applySnapshot(evt); break;
+      case 'agent_update': upsertAgent(evt.agent || evt); renderRoster(); break;
+      case 'log': addFeedEntry(evt.kind || 'info', evt.text || ''); break;
+      case 'proposal': renderLiveProposal(evt); break;
+      case 'error_alert': renderLiveErrorAlert(evt); break;
+      case 'resolved': resolvePendingItem(evt.id, evt.outcome, true); break;
+    }
+  }
+
+  function connectRelay(url){
+    if(!url){
+      relayStatusEl.textContent = 'NO URL';
+      relayStatusEl.className = 'relay-status error';
+      return;
+    }
+    try{
+      ws = new WebSocket(url);
+    } catch(e){
+      relayStatusEl.textContent = 'ERROR';
+      relayStatusEl.className = 'relay-status error';
+      addFeedEntry('error', 'Could not connect to relay: ' + e.message);
+      return;
+    }
+    ws.onopen = function(){
+      relayStatusEl.textContent = 'LIVE';
+      relayStatusEl.className = 'relay-status live';
+      addFeedEntry('success', 'Connected to relay at ' + url);
+    };
+    ws.onmessage = function(ev){
+      try{ handleRelayEvent(JSON.parse(ev.data)); } catch(e){ /* ignore malformed message */ }
+    };
+    ws.onerror = function(){
+      relayStatusEl.textContent = 'ERROR';
+      relayStatusEl.className = 'relay-status error';
+    };
+    ws.onclose = function(){
+      if(state.mode === 'live'){
+        relayStatusEl.textContent = 'DISCONNECTED';
+        relayStatusEl.className = 'relay-status error';
+        addFeedEntry('warning', 'Relay connection closed.');
+      }
+    };
+  }
+
+  function disconnectRelay(){
+    if(ws){ ws.onclose = null; ws.close(); ws = null; }
+  }
+
+  function setManualControlsEnabled(enabled){
+    ['btnAction','btnRoomEvent','btnAlert'].forEach(function(bid){
+      document.getElementById(bid).disabled = !enabled;
+    });
+  }
+
+  function enterLiveMode(){
+    state.mode = 'live';
+    liveSwitch.classList.add('on');
+    relayStatusEl.textContent = 'CONNECTING…';
+    relayStatusEl.className = 'relay-status connecting';
+    stopAutonomousTicks();
+    setManualControlsEnabled(false);
+    connectRelay(relayUrlInput.value.trim());
+  }
+
+  function enterDemoMode(){
+    state.mode = 'demo';
+    liveSwitch.classList.remove('on');
+    relayStatusEl.textContent = 'DEMO';
+    relayStatusEl.className = 'relay-status';
+    disconnectRelay();
+    setManualControlsEnabled(true);
+    document.querySelectorAll('.agent').forEach(function(el){ el.remove(); });
+    seedDemoAgents();
+    buildAgentSprites();
+    renderRoster();
+    addFeedEntry('info', 'Switched to DEMO mode (simulated data).');
+    startAutonomousTicks();
   }
 
   /* ======================= WIRE UP CONTROLS ======================= */
@@ -1244,6 +1509,13 @@
     masterSwitch.classList.toggle('on', state.autonomous);
     addFeedEntry(state.autonomous ? 'success' : 'warning',
       state.autonomous ? 'Autonomous mode ENABLED — agents resuming background activity.' : 'Autonomous mode DISABLED — agents holding position.');
+  });
+
+  var liveSwitch = document.getElementById('liveSwitch');
+  var relayUrlInput = document.getElementById('relayUrl');
+  var relayStatusEl = document.getElementById('relayStatus');
+  liveSwitch.addEventListener('click', function(){
+    if(state.mode === 'demo') enterLiveMode(); else enterDemoMode();
   });
 
   /* ======================= INIT ======================= */
