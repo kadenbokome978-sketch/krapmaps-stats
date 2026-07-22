@@ -146,14 +146,84 @@
     min-height:0;
     min-width:0;
   }
+  /* Plus-shaped hub: The Bridge sits dead center, three wings (Workshop,
+     Treasury, Radar) branch off it through glowing corridors. The west
+     spoke is left as a sealed/unused wing rather than forced symmetry. */
   #rooms{
     display:grid;
-    grid-template-columns:1fr 1fr;
-    grid-template-rows:1fr 1fr;
-    gap:10px;
+    grid-template-columns: minmax(180px,1fr) 42px minmax(180px,1fr) 42px minmax(180px,1fr);
+    grid-template-rows: minmax(150px,1fr) 42px minmax(150px,1fr) 42px minmax(150px,1fr);
+    gap:0;
     padding:10px;
     min-height:0;
     min-width:0;
+    overflow:auto;
+    background-image: radial-gradient(rgba(124,138,168,0.09) 1px, transparent 1px);
+    background-size: 16px 16px;
+    background-position: 10px 10px;
+  }
+  #room-workshop{ grid-area: 1 / 3 / 2 / 4; }
+  #room-bridge{ grid-area: 3 / 3 / 4 / 4; }
+  #room-treasury{ grid-area: 3 / 5 / 4 / 6; }
+  #room-radar{ grid-area: 5 / 3 / 6 / 4; }
+  #room-locked{ grid-area: 3 / 1 / 4 / 2; }
+  #pathway-n{ grid-area: 2 / 3 / 3 / 4; }
+  #pathway-s{ grid-area: 4 / 3 / 5 / 4; }
+  #pathway-e{ grid-area: 3 / 4 / 4 / 5; }
+  #pathway-w{ grid-area: 3 / 2 / 4 / 3; }
+
+  .pathway{
+    position:relative;
+    background:#0a0d16;
+    overflow:hidden;
+  }
+  .pathway.vert{ border-left:1px solid var(--panel-line); border-right:1px solid var(--panel-line); }
+  .pathway.horiz{ border-top:1px solid var(--panel-line); border-bottom:1px solid var(--panel-line); }
+  .pathway::before{
+    content:'';
+    position:absolute; inset:0;
+    opacity:0.65;
+  }
+  .pathway.vert::before{
+    background:repeating-linear-gradient(180deg, var(--pathcolor,var(--bridge)) 0 6px, transparent 6px 16px);
+    animation:pathFlowV 0.8s linear infinite;
+  }
+  .pathway.horiz::before{
+    background:repeating-linear-gradient(90deg, var(--pathcolor,var(--bridge)) 0 6px, transparent 6px 16px);
+    animation:pathFlowH 0.8s linear infinite;
+  }
+  @keyframes pathFlowV{ 0%{background-position:0 0;} 100%{background-position:0 16px;} }
+  @keyframes pathFlowH{ 0%{background-position:0 0;} 100%{background-position:16px 0;} }
+  .pathway.dead{ border-color:#1a1f2d; }
+  .pathway.dead::before{
+    animation:none;
+    opacity:0.3;
+    background:repeating-linear-gradient(90deg, #3a4258 0 4px, transparent 4px 10px);
+  }
+  #pathway-n{ --pathcolor: var(--workshop); }
+  #pathway-e{ --pathcolor: var(--treasury); }
+  #pathway-s{ --pathcolor: var(--radar); }
+
+  .room-locked{
+    position:relative;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:4px;
+    border:2px dashed #1e2536;
+    background:repeating-linear-gradient(135deg, rgba(255,255,255,0.02) 0 2px, transparent 2px 10px), #07080d;
+    color:#3a4258;
+  }
+  .room-locked .locked-label{
+    font-size:10px;
+    letter-spacing:2px;
+    text-transform:uppercase;
+  }
+  .room-locked .locked-sub{
+    font-size:8px;
+    letter-spacing:1px;
+    text-transform:uppercase;
   }
 
   /* ---------- Room base ---------- */
@@ -653,7 +723,7 @@
     <div id="rooms">
       <div class="room bridge" id="room-bridge">
         <div class="room-label">The Bridge</div>
-        <div class="room-sub">command // control</div>
+        <div class="room-sub">central console</div>
       </div>
       <div class="room workshop" id="room-workshop">
         <div class="room-label">Workshop</div>
@@ -667,6 +737,14 @@
         <div class="room-label">Radar</div>
         <div class="room-sub">signals // intel</div>
       </div>
+      <div class="room-locked" id="room-locked">
+        <div class="locked-label">Sector Offline</div>
+        <div class="locked-sub">west wing // decommissioned</div>
+      </div>
+      <div class="pathway vert" id="pathway-n"></div>
+      <div class="pathway vert" id="pathway-s"></div>
+      <div class="pathway horiz" id="pathway-e"></div>
+      <div class="pathway horiz dead" id="pathway-w"></div>
     </div>
 
     <div id="sidebar">
