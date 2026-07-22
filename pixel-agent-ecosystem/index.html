@@ -313,24 +313,39 @@
     0%,100%{ transform:scale(1); opacity:0.7;}
     50%{ transform:scale(1.6); opacity:1;}
   }
-  .console{
+  /* Circular console core at the heart of the Bridge, with docking
+     stubs reaching toward each corridor's edge. */
+  .console-core{
     position:absolute;
-    width:46px;height:26px;
-    background:#0e1626;
-    border:1px solid var(--bridge);
-    box-shadow:0 0 8px rgba(57,255,143,0.4);
+    left:50%; top:50%;
+    width:118px; height:118px;
+    margin:-59px 0 0 -59px;
+    border-radius:50%;
+    border:2px solid var(--bridge);
+    background:radial-gradient(circle, rgba(57,255,143,0.10), transparent 72%);
+    box-shadow:0 0 22px rgba(57,255,143,0.45), inset 0 0 24px rgba(57,255,143,0.18);
   }
-  .console::after{
+  .console-core::before{
     content:'';
-    position:absolute; top:4px; left:4px; right:4px; height:6px;
-    background:repeating-linear-gradient(90deg, var(--bridge) 0 2px, transparent 2px 4px);
-    opacity:0.6;
-    animation:scrollData 1.4s linear infinite;
+    position:absolute; inset:16px;
+    border-radius:50%;
+    border:1px dashed rgba(57,255,143,0.5);
+    animation:vaultSpin 9s linear infinite;
   }
-  @keyframes scrollData{
-    0%{ background-position:0 0;}
-    100%{ background-position:16px 0;}
+  .console-core::after{
+    content:'';
+    position:absolute; left:50%; top:50%;
+    width:10px; height:10px; margin:-5px 0 0 -5px;
+    border-radius:50%;
+    background:var(--bridge);
+    box-shadow:0 0 12px var(--bridge);
+    animation:pulseBeacon 2.2s ease-in-out infinite;
   }
+  .core-stub{ position:absolute; }
+  .core-stub.n{ left:50%; top:-34px; width:4px; height:34px; margin-left:-2px; background:var(--workshop); box-shadow:0 0 6px var(--workshop); }
+  .core-stub.e{ top:50%; right:-34px; width:34px; height:4px; margin-top:-2px; background:var(--treasury); box-shadow:0 0 6px var(--treasury); }
+  .core-stub.s{ left:50%; bottom:-34px; width:4px; height:34px; margin-left:-2px; background:var(--radar); box-shadow:0 0 6px var(--radar); }
+  .core-stub.w{ top:50%; left:-34px; width:34px; height:4px; margin-top:-2px; background:#3a4258; }
 
   /* ---------- Workshop decor ---------- */
   .furnace{
@@ -745,6 +760,12 @@
       <div class="room bridge" id="room-bridge">
         <div class="room-label">The Bridge</div>
         <div class="room-sub">central console</div>
+        <div class="console-core">
+          <div class="core-stub n"></div>
+          <div class="core-stub e"></div>
+          <div class="core-stub s"></div>
+          <div class="core-stub w"></div>
+        </div>
       </div>
       <div class="room workshop" id="room-workshop">
         <div class="room-label">Workshop</div>
@@ -871,10 +892,7 @@
 
   function buildRoomDecor(){
     var bridge = document.getElementById('room-bridge');
-    var beacon = div('beacon'); beacon.style.left='80%'; beacon.style.top='18%'; bridge.appendChild(beacon);
-    [[62,58],[75,72],[50,80]].forEach(function(p){
-      var c = div('console'); c.style.left=p[0]+'%'; c.style.top=p[1]+'%'; bridge.appendChild(c);
-    });
+    var beacon = div('beacon'); beacon.style.left='84%'; beacon.style.top='14%'; bridge.appendChild(beacon);
 
     var workshop = document.getElementById('room-workshop');
     var furnace = div('furnace'); furnace.style.left='12%'; furnace.style.bottom='14%';
