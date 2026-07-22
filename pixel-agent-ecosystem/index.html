@@ -1,0 +1,1261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AGENT ECOSYSTEM // Command Deck</title>
+<style>
+  :root{
+    --bridge: #39ff8f;
+    --workshop: #ff9d2b;
+    --treasury: #b464ff;
+    --radar: #38e4ff;
+    --bg-deep: #05060a;
+    --panel: #0b0e16;
+    --panel-line: #1c2233;
+    --text-dim: #7c8aa8;
+    --text: #d8e2ff;
+    --danger: #ff4d5e;
+    --warn: #ffb238;
+    --ok: #39ff8f;
+  }
+  *{box-sizing:border-box;}
+  html,body{
+    margin:0;padding:0;height:100%;
+    background:var(--bg-deep);
+    color:var(--text);
+    font-family:'Courier New', 'Consolas', monospace;
+    overflow:hidden;
+    image-rendering:pixelated;
+  }
+  body{
+    background-image:
+      radial-gradient(circle at 20% 10%, rgba(57,255,143,0.05), transparent 40%),
+      radial-gradient(circle at 80% 90%, rgba(180,100,255,0.06), transparent 40%);
+  }
+
+  /* ---------- App shell ---------- */
+  #app{
+    display:grid;
+    grid-template-rows:auto 1fr auto;
+    grid-template-columns:1fr;
+    height:100vh;
+    width:100vw;
+  }
+
+  /* ---------- Top bar ---------- */
+  #topbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:10px 16px;
+    background:linear-gradient(180deg,#0d1120,#080a12);
+    border-bottom:2px solid var(--panel-line);
+    box-shadow:0 2px 12px rgba(0,0,0,0.6);
+    flex-wrap:wrap;
+    gap:10px;
+    z-index:20;
+  }
+  #topbar h1{
+    font-size:14px;
+    letter-spacing:2px;
+    margin:0;
+    color:var(--bridge);
+    text-shadow:0 0 6px var(--bridge);
+    white-space:nowrap;
+  }
+  #topbar h1 span{color:var(--text-dim); font-size:10px; display:block; letter-spacing:1px; text-shadow:none;}
+  .controls{
+    display:flex;
+    gap:8px;
+    flex-wrap:wrap;
+    align-items:center;
+  }
+  .btn{
+    font-family:inherit;
+    font-size:10px;
+    letter-spacing:1px;
+    color:var(--text);
+    background:#131826;
+    border:1px solid var(--panel-line);
+    padding:8px 10px;
+    cursor:pointer;
+    text-transform:uppercase;
+    transition:all .15s;
+    box-shadow:inset 0 0 0 rgba(0,0,0,0);
+  }
+  .btn:hover{
+    border-color:var(--bridge);
+    color:var(--bridge);
+    box-shadow:0 0 8px rgba(57,255,143,0.35);
+  }
+  .btn.warn:hover{ border-color:var(--warn); color:var(--warn); box-shadow:0 0 8px rgba(255,178,56,0.35);}
+  .btn.danger:hover{ border-color:var(--danger); color:var(--danger); box-shadow:0 0 8px rgba(255,77,94,0.35);}
+  .btn.active{
+    border-color:var(--bridge);
+    color:var(--bg-deep);
+    background:var(--bridge);
+    box-shadow:0 0 10px rgba(57,255,143,0.6);
+  }
+
+  .master-toggle{
+    display:flex;align-items:center;gap:8px;
+    font-size:10px;letter-spacing:1px;color:var(--text-dim);
+    text-transform:uppercase;
+  }
+  .switch{
+    width:34px;height:16px;border:1px solid var(--panel-line);background:#0f1320;
+    position:relative;cursor:pointer;
+  }
+  .switch .knob{
+    position:absolute;top:1px;left:1px;width:12px;height:12px;background:var(--text-dim);
+    transition:all .2s;
+  }
+  .switch.on{border-color:var(--bridge); box-shadow:0 0 8px rgba(57,255,143,0.4);}
+  .switch.on .knob{left:19px;background:var(--bridge); box-shadow:0 0 6px var(--bridge);}
+
+  /* ---------- Main layout ---------- */
+  #main{
+    display:grid;
+    grid-template-columns:1fr 320px;
+    min-height:0;
+    min-width:0;
+  }
+  #rooms{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    grid-template-rows:1fr 1fr;
+    gap:10px;
+    padding:10px;
+    min-height:0;
+    min-width:0;
+  }
+
+  /* ---------- Room base ---------- */
+  .room{
+    position:relative;
+    overflow:hidden;
+    background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.02) 0px, rgba(255,255,255,0.02) 1px, transparent 1px, transparent 22px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.02) 0px, rgba(255,255,255,0.02) 1px, transparent 1px, transparent 22px),
+      #0a0d16;
+    border:2px solid var(--panel-line);
+    box-shadow:inset 0 0 40px rgba(0,0,0,0.6);
+    min-height:0;
+    min-width:0;
+  }
+  .room::before{ /* scanline flicker */
+    content:'';
+    position:absolute;inset:0;
+    background:linear-gradient(180deg, transparent 0%, rgba(255,255,255,0.015) 50%, transparent 100%);
+    background-size:100% 4px;
+    pointer-events:none;
+    opacity:0.5;
+  }
+  .room-label{
+    position:absolute;
+    top:6px;left:8px;
+    font-size:11px;
+    letter-spacing:2px;
+    text-transform:uppercase;
+    padding:3px 8px;
+    z-index:5;
+    background:rgba(5,6,10,0.7);
+    border:1px solid currentColor;
+  }
+  .room-sub{
+    position:absolute;
+    top:26px;left:8px;
+    font-size:8px;
+    letter-spacing:1px;
+    color:var(--text-dim);
+    z-index:5;
+  }
+  .room.bridge{ color:var(--bridge); border-color:#123423; box-shadow:inset 0 0 40px rgba(57,255,143,0.08), 0 0 14px rgba(57,255,143,0.12);}
+  .room.workshop{ color:var(--workshop); border-color:#3a2410; box-shadow:inset 0 0 40px rgba(255,157,43,0.08), 0 0 14px rgba(255,157,43,0.12);}
+  .room.treasury{ color:var(--treasury); border-color:#2a1640; box-shadow:inset 0 0 40px rgba(180,100,255,0.08), 0 0 14px rgba(180,100,255,0.12);}
+  .room.radar{ color:var(--radar); border-color:#0f313d; box-shadow:inset 0 0 40px rgba(56,228,255,0.08), 0 0 14px rgba(56,228,255,0.12);}
+
+  .room.flare{
+    animation:flareRoom 0.9s ease-out;
+  }
+  @keyframes flareRoom{
+    0%{ box-shadow:inset 0 0 90px currentColor, 0 0 40px currentColor; }
+    100%{ box-shadow:inset 0 0 40px rgba(255,255,255,0.08), 0 0 14px rgba(255,255,255,0.1); }
+  }
+
+  /* ---------- Bridge decor ---------- */
+  .beacon{
+    position:absolute;
+    width:10px;height:10px;
+    border-radius:50%;
+    background:var(--bridge);
+    box-shadow:0 0 10px var(--bridge), 0 0 20px var(--bridge);
+    animation:pulseBeacon 2.2s ease-in-out infinite;
+  }
+  @keyframes pulseBeacon{
+    0%,100%{ transform:scale(1); opacity:0.7;}
+    50%{ transform:scale(1.6); opacity:1;}
+  }
+  .console{
+    position:absolute;
+    width:46px;height:26px;
+    background:#0e1626;
+    border:1px solid var(--bridge);
+    box-shadow:0 0 8px rgba(57,255,143,0.4);
+  }
+  .console::after{
+    content:'';
+    position:absolute; top:4px; left:4px; right:4px; height:6px;
+    background:repeating-linear-gradient(90deg, var(--bridge) 0 2px, transparent 2px 4px);
+    opacity:0.6;
+    animation:scrollData 1.4s linear infinite;
+  }
+  @keyframes scrollData{
+    0%{ background-position:0 0;}
+    100%{ background-position:16px 0;}
+  }
+
+  /* ---------- Workshop decor ---------- */
+  .furnace{
+    position:absolute;
+    width:54px;height:40px;
+    background:#160c05;
+    border:2px solid #4a2a10;
+  }
+  .furnace-glow{
+    position:absolute;
+    inset:6px 6px 0 6px;
+    height:22px;
+    background:radial-gradient(ellipse at bottom, #ffcf6b, var(--workshop) 60%, transparent 80%);
+    animation:furnaceFlicker 1.1s ease-in-out infinite;
+    filter:blur(1px);
+  }
+  @keyframes furnaceFlicker{
+    0%,100%{ opacity:0.75; transform:scaleY(1);}
+    50%{ opacity:1; transform:scaleY(1.15);}
+  }
+  .chimney{
+    position:absolute;
+    width:8px;height:26px;
+    background:#241a12;
+    border:1px solid #4a2a10;
+  }
+  .smoke{
+    position:absolute;
+    width:6px;height:6px;
+    background:rgba(200,200,210,0.35);
+    border-radius:50%;
+    animation:smokeRise 3.2s linear forwards;
+    pointer-events:none;
+  }
+  @keyframes smokeRise{
+    0%{ transform:translate(0,0) scale(1); opacity:0.5;}
+    100%{ transform:translate(14px,-70px) scale(2.4); opacity:0;}
+  }
+  .waterfall{
+    position:absolute;
+    width:18px;
+    background:repeating-linear-gradient(180deg, rgba(56,228,255,0.9) 0 4px, rgba(56,228,255,0.3) 4px 8px);
+    animation:waterFlow 0.5s linear infinite;
+    box-shadow:0 0 8px rgba(56,228,255,0.5);
+  }
+  @keyframes waterFlow{
+    0%{ background-position:0 0;}
+    100%{ background-position:0 8px;}
+  }
+  .waterpool{
+    position:absolute;
+    height:6px;
+    background:rgba(56,228,255,0.35);
+    border-radius:50%;
+    filter:blur(1px);
+    animation:poolShimmer 2s ease-in-out infinite;
+  }
+  @keyframes poolShimmer{
+    0%,100%{ opacity:0.5;} 50%{ opacity:0.9;}
+  }
+
+  /* ---------- Treasury decor ---------- */
+  .vault{
+    position:absolute;
+    width:46px;height:46px;
+    border-radius:50%;
+    background:radial-gradient(circle, #1c1030, #0c0716 70%);
+    border:3px solid var(--treasury);
+    box-shadow:0 0 14px rgba(180,100,255,0.5), inset 0 0 10px rgba(180,100,255,0.4);
+  }
+  .vault::after{
+    content:'';
+    position:absolute; inset:8px;
+    border:2px solid rgba(180,100,255,0.4);
+    border-radius:50%;
+    animation:vaultSpin 6s linear infinite;
+    border-top-color:var(--treasury);
+  }
+  @keyframes vaultSpin{ to{ transform:rotate(360deg);} }
+  .coin{
+    position:absolute;
+    width:8px;height:8px;
+    border-radius:50%;
+    background:#ffd75e;
+    box-shadow:0 0 4px #ffd75e;
+    animation:coinGlint 1.6s ease-in-out infinite;
+  }
+  @keyframes coinGlint{
+    0%,100%{ opacity:0.6; transform:scale(1);}
+    50%{ opacity:1; transform:scale(1.2);}
+  }
+  .energy-beam{
+    position:absolute;
+    width:2px;
+    background:linear-gradient(180deg, transparent, var(--treasury), transparent);
+    opacity:0.6;
+    animation:beamPulse 2.4s ease-in-out infinite;
+  }
+  @keyframes beamPulse{
+    0%,100%{ opacity:0.2;} 50%{ opacity:0.8;}
+  }
+
+  /* ---------- Radar decor ---------- */
+  .radar-dish{
+    position:absolute;
+    width:70px;height:70px;
+    border-radius:50%;
+    border:1px solid rgba(56,228,255,0.35);
+  }
+  .radar-dish::before,.radar-dish::after{
+    content:'';
+    position:absolute; inset:14px;
+    border-radius:50%;
+    border:1px solid rgba(56,228,255,0.25);
+  }
+  .radar-dish::after{ inset:28px; }
+  .radar-sweep{
+    position:absolute;
+    inset:0;
+    border-radius:50%;
+    background:conic-gradient(from 0deg, rgba(56,228,255,0.55), transparent 40deg, transparent 360deg);
+    animation:sweepSpin 3.4s linear infinite;
+  }
+  @keyframes sweepSpin{ to{ transform:rotate(360deg);} }
+  .blip{
+    position:absolute;
+    width:5px;height:5px;
+    border-radius:50%;
+    background:var(--radar);
+    box-shadow:0 0 6px var(--radar);
+    animation:blipFade 2.6s ease-in-out infinite;
+  }
+  @keyframes blipFade{
+    0%,100%{ opacity:0.2;} 50%{ opacity:1;}
+  }
+
+  /* ---------- Desks (generic stations) ---------- */
+  .desk{
+    position:absolute;
+    width:20px;height:12px;
+    background:#0f1320;
+    border:1px solid var(--panel-line);
+  }
+
+  /* ---------- Agent sprites ---------- */
+  .agent{
+    position:absolute;
+    width:16px;height:22px;
+    transition:left 1.6s linear, top 1.6s linear, transform .3s;
+    z-index:10;
+    cursor:pointer;
+  }
+  .agent .body{
+    position:absolute;
+    left:3px; top:8px;
+    width:10px; height:10px;
+    animation:bob 1.6s ease-in-out infinite;
+  }
+  .agent .head{
+    position:absolute;
+    left:4px; top:2px;
+    width:8px; height:7px;
+    border-radius:2px;
+    animation:bob 1.6s ease-in-out infinite;
+  }
+  .agent .legL,.agent .legR{
+    position:absolute;
+    bottom:0; width:4px; height:5px;
+  }
+  .agent .legL{ left:3px; }
+  .agent .legR{ left:9px; }
+  @keyframes bob{
+    0%,100%{ transform:translateY(0px); }
+    50%{ transform:translateY(-1.5px); }
+  }
+  .agent.walking .legL{ animation:legSwingL 0.5s steps(2) infinite; }
+  .agent.walking .legR{ animation:legSwingR 0.5s steps(2) infinite; }
+  @keyframes legSwingL{ 0%{ transform:translateX(0);} 50%{ transform:translateX(-2px);} 100%{transform:translateX(0);} }
+  @keyframes legSwingR{ 0%{ transform:translateX(0);} 50%{ transform:translateX(2px);} 100%{transform:translateX(0);} }
+  .agent.walking{ animation:walkTilt 0.5s ease-in-out infinite; }
+  @keyframes walkTilt{
+    0%,100%{ transform:rotate(0deg);} 50%{ transform:rotate(1.5deg);}
+  }
+  .agent.flipped{ transform:scaleX(-1); }
+
+  .agent-ring{
+    position:absolute;
+    left:-3px; top:16px;
+    width:22px; height:8px;
+    border-radius:50%;
+    box-shadow:0 0 8px 2px currentColor;
+    opacity:0.8;
+  }
+  .status-active .agent-ring{ color:var(--ok); }
+  .status-paused .agent-ring{ color:var(--warn); }
+  .status-error .agent-ring{ color:var(--danger); }
+  .status-idle .agent-ring{ color:var(--text-dim); }
+
+  .badge{
+    position:absolute;
+    bottom:26px;
+    left:50%;
+    transform:translateX(-50%);
+    white-space:nowrap;
+    font-size:8px;
+    letter-spacing:0.5px;
+    padding:3px 6px;
+    background:rgba(5,6,10,0.9);
+    border:1px solid var(--panel-line);
+    color:var(--text);
+    pointer-events:none;
+    max-width:160px;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+  .badge.status-active{ border-color:var(--ok); color:var(--ok); }
+  .badge.status-paused{ border-color:var(--warn); color:var(--warn); }
+  .badge.status-error{ border-color:var(--danger); color:var(--danger); animation:badgeBlink 1s step-start infinite; }
+  .badge.status-idle{ border-color:var(--text-dim); color:var(--text-dim); }
+  @keyframes badgeBlink{ 50%{ opacity:0.4; } }
+
+  .name-tag{
+    position:absolute;
+    bottom:-9px;
+    left:50%;
+    transform:translateX(-50%);
+    font-size:7px;
+    color:var(--text-dim);
+    white-space:nowrap;
+  }
+
+  /* ---------- Sidebar ---------- */
+  #sidebar{
+    display:flex;
+    flex-direction:column;
+    background:var(--panel);
+    border-left:2px solid var(--panel-line);
+    min-height:0;
+  }
+  #sidebar .sb-header{
+    padding:10px 12px;
+    border-bottom:1px solid var(--panel-line);
+    font-size:11px;
+    letter-spacing:2px;
+    color:var(--radar);
+    text-shadow:0 0 6px rgba(56,228,255,0.5);
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+  }
+  #sidebar .sb-header .dot{
+    width:6px;height:6px;border-radius:50%;
+    background:var(--ok);
+    box-shadow:0 0 6px var(--ok);
+    animation:pulseBeacon 2s ease-in-out infinite;
+  }
+  #feed{
+    flex:1;
+    overflow-y:auto;
+    padding:8px;
+    display:flex;
+    flex-direction:column;
+    gap:6px;
+  }
+  #feed::-webkit-scrollbar{ width:6px; }
+  #feed::-webkit-scrollbar-thumb{ background:var(--panel-line); }
+
+  .entry{
+    border:1px solid var(--panel-line);
+    background:#0e1220;
+    padding:7px 8px;
+    font-size:10px;
+    line-height:1.5;
+    animation:entryIn .25s ease-out;
+  }
+  @keyframes entryIn{
+    from{ opacity:0; transform:translateY(-4px); }
+    to{ opacity:1; transform:translateY(0); }
+  }
+  .entry .meta{
+    display:flex;
+    justify-content:space-between;
+    font-size:8px;
+    color:var(--text-dim);
+    margin-bottom:3px;
+    letter-spacing:1px;
+    text-transform:uppercase;
+  }
+  .entry.info{ border-left:3px solid var(--radar); }
+  .entry.success{ border-left:3px solid var(--ok); }
+  .entry.warning{ border-left:3px solid var(--warn); }
+  .entry.error{ border-left:3px solid var(--danger); }
+  .entry.proposal{ border-left:3px solid var(--treasury); background:#140e22; }
+  .entry.resolved{ opacity:0.55; }
+  .entry .msg{ color:var(--text); }
+  .entry .tag{
+    padding:1px 5px;
+    border:1px solid currentColor;
+  }
+
+  .proposal-actions{
+    display:flex;
+    gap:6px;
+    margin-top:6px;
+  }
+  .pbtn{
+    flex:1;
+    font-family:inherit;
+    font-size:9px;
+    letter-spacing:1px;
+    padding:5px 0;
+    cursor:pointer;
+    background:#131826;
+    border:1px solid var(--panel-line);
+    color:var(--text);
+    text-transform:uppercase;
+  }
+  .pbtn.approve:hover{ border-color:var(--ok); color:var(--ok); box-shadow:0 0 6px rgba(57,255,143,0.4); }
+  .pbtn.reject:hover{ border-color:var(--danger); color:var(--danger); box-shadow:0 0 6px rgba(255,77,94,0.4); }
+  .resolved-tag{
+    margin-top:6px;
+    font-size:8px;
+    letter-spacing:1px;
+    text-transform:uppercase;
+  }
+  .resolved-tag.approved{ color:var(--ok); }
+  .resolved-tag.rejected{ color:var(--danger); }
+
+  /* ---------- Roster (bottom bar) ---------- */
+  #roster{
+    display:flex;
+    gap:8px;
+    padding:8px 12px;
+    background:#080a12;
+    border-top:2px solid var(--panel-line);
+    overflow-x:auto;
+    z-index:20;
+  }
+  .roster-card{
+    flex:0 0 auto;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding:6px 10px;
+    background:#0e1220;
+    border:1px solid var(--panel-line);
+    min-width:190px;
+  }
+  .roster-dot{
+    width:8px;height:8px;border-radius:50%;
+    box-shadow:0 0 6px currentColor;
+    flex:0 0 auto;
+  }
+  .roster-dot.status-active{ color:var(--ok); background:var(--ok); }
+  .roster-dot.status-paused{ color:var(--warn); background:var(--warn); }
+  .roster-dot.status-error{ color:var(--danger); background:var(--danger); }
+  .roster-dot.status-idle{ color:var(--text-dim); background:var(--text-dim); }
+  .roster-info{ display:flex; flex-direction:column; min-width:0; }
+  .roster-name{ font-size:10px; letter-spacing:1px; }
+  .roster-task{ font-size:8px; color:var(--text-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:150px;}
+  .roster-timer{ font-size:8px; color:var(--warn); margin-left:auto; white-space:nowrap; }
+
+  /* ---------- Tooltip on click ---------- */
+  #toast{
+    position:fixed;
+    bottom:70px;
+    left:50%;
+    transform:translateX(-50%);
+    background:#0e1220;
+    border:1px solid var(--bridge);
+    padding:8px 14px;
+    font-size:10px;
+    color:var(--bridge);
+    box-shadow:0 0 12px rgba(57,255,143,0.4);
+    opacity:0;
+    pointer-events:none;
+    transition:opacity .3s;
+    z-index:100;
+  }
+  #toast.show{ opacity:1; }
+
+  @media (max-width: 900px){
+    #main{ grid-template-columns:1fr; grid-template-rows:1fr 240px; }
+    #sidebar{ border-left:none; border-top:2px solid var(--panel-line); }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="topbar">
+    <h1>AGENT ECOSYSTEM <span>// autonomous ops command deck</span></h1>
+    <div class="controls">
+      <div class="master-toggle">
+        AUTONOMY
+        <div class="switch on" id="masterSwitch"><div class="knob"></div></div>
+      </div>
+      <button class="btn" id="btnAction">▶ Simulate Agent Action</button>
+      <button class="btn warn" id="btnRoomEvent">⚡ Trigger Room Event</button>
+      <button class="btn danger" id="btnAlert">⚠ Simulate Alert</button>
+    </div>
+  </div>
+
+  <div id="main">
+    <div id="rooms">
+      <div class="room bridge" id="room-bridge">
+        <div class="room-label">The Bridge</div>
+        <div class="room-sub">command // control</div>
+      </div>
+      <div class="room workshop" id="room-workshop">
+        <div class="room-label">Workshop</div>
+        <div class="room-sub">build // forge</div>
+      </div>
+      <div class="room treasury" id="room-treasury">
+        <div class="room-label">Treasury</div>
+        <div class="room-sub">assets // ledger</div>
+      </div>
+      <div class="room radar" id="room-radar">
+        <div class="room-label">Radar</div>
+        <div class="room-sub">signals // intel</div>
+      </div>
+    </div>
+
+    <div id="sidebar">
+      <div class="sb-header"><span>OPS FEED</span><span class="dot"></span></div>
+      <div id="feed"></div>
+    </div>
+  </div>
+
+  <div id="roster"></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+(function(){
+
+  /* ======================= DATA ======================= */
+
+  var ROOM_COLORS = {
+    bridge: '#39ff8f',
+    workshop: '#ff9d2b',
+    treasury: '#b464ff',
+    radar: '#38e4ff'
+  };
+
+  var AGENT_PALETTE = [
+    { skin:'#ffd39a', hair:'#3a2a1e' },
+    { skin:'#c9a67e', hair:'#151515' },
+    { skin:'#e8b98c', hair:'#7a4a2a' },
+    { skin:'#f0c9a0', hair:'#5a2e6b' },
+    { skin:'#d8ab86', hair:'#2b4a6b' },
+    { skin:'#efc7a3', hair:'#8a1f1f' }
+  ];
+
+  var TASKS_BY_ROOM = {
+    bridge: ['Coordinating agent swarm', 'Reviewing mission queue', 'Drafting status report', 'Prioritizing task backlog', 'Monitoring KPIs'],
+    workshop: ['Designing Etsy Listing', 'Building landing page', 'Refactoring pipeline script', 'Generating product mockups', 'Compiling assets'],
+    treasury: ['Reconciling ledger', 'Forecasting revenue', 'Auditing API spend', 'Updating budget model', 'Tracking invoice queue'],
+    radar: ['Researching Business Idea', 'Scanning market signals', 'Monitoring competitor pricing', 'Crawling trend feeds', 'Watching rate limits']
+  };
+
+  var AGENTS = [
+    { id:'a1', name:'NOVA',    room:'bridge',   colorIdx:0 },
+    { id:'a2', name:'SMITH',   room:'workshop', colorIdx:1 },
+    { id:'a3', name:'LEDGER',  room:'treasury', colorIdx:2 },
+    { id:'a4', name:'SENTRY',  room:'radar',    colorIdx:3 },
+    { id:'a5', name:'PATCH',   room:'workshop', colorIdx:4 },
+    { id:'a6', name:'SCOUT',   room:'radar',    colorIdx:5 }
+  ];
+
+  var state = {
+    autonomous: true,
+    agents: {},
+    feedIdCounter: 0
+  };
+
+  AGENTS.forEach(function(a, i){
+    state.agents[a.id] = {
+      id:a.id,
+      name:a.name,
+      room:a.room,
+      palette: AGENT_PALETTE[a.colorIdx],
+      color: pickAgentColor(i),
+      status: i === 4 ? 'paused' : 'active',
+      task: i === 4 ? 'Paused (Rate Limit)' : pick(TASKS_BY_ROOM[a.room]),
+      x: 20 + Math.random()*50,
+      y: 40 + Math.random()*40,
+      facing: 1,
+      walking:false,
+      timer: i === 4 ? 118*60 : 0 /* seconds, only meaningful when paused */
+    };
+  });
+
+  function pickAgentColor(i){
+    var colors = ['#39ff8f','#38e4ff','#ffd75e','#b464ff','#ff9d2b','#ff6bd6'];
+    return colors[i % colors.length];
+  }
+  function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+  function randRange(a,b){ return a + Math.random()*(b-a); }
+
+  /* ======================= ROOM DECOR ======================= */
+
+  function buildRoomDecor(){
+    var bridge = document.getElementById('room-bridge');
+    var beacon = div('beacon'); beacon.style.left='80%'; beacon.style.top='18%'; bridge.appendChild(beacon);
+    [[62,58],[75,72],[50,80]].forEach(function(p){
+      var c = div('console'); c.style.left=p[0]+'%'; c.style.top=p[1]+'%'; bridge.appendChild(c);
+    });
+
+    var workshop = document.getElementById('room-workshop');
+    var furnace = div('furnace'); furnace.style.left='12%'; furnace.style.bottom='14%';
+    var glow = div('furnace-glow'); furnace.appendChild(glow);
+    workshop.appendChild(furnace);
+    var chimney = div('chimney'); chimney.style.left='16%'; chimney.style.bottom='48%';
+    workshop.appendChild(chimney);
+    var wf = div('waterfall'); wf.style.right='10%'; wf.style.top='6%'; wf.style.height='70%';
+    workshop.appendChild(wf);
+    var pool = div('waterpool'); pool.style.right='6%'; pool.style.bottom='6%'; pool.style.width='60px';
+    workshop.appendChild(pool);
+    window.__smokeOrigin = { el: workshop, xPct: 16, yPct: 48 };
+
+    var treasury = document.getElementById('room-treasury');
+    var vault = div('vault'); vault.style.left='60%'; vault.style.top='40%';
+    treasury.appendChild(vault);
+    for(var i=0;i<5;i++){
+      var coin = div('coin');
+      coin.style.left = (15 + Math.random()*25) + '%';
+      coin.style.bottom = (10 + Math.random()*20) + '%';
+      coin.style.animationDelay = (Math.random()*1.6)+'s';
+      treasury.appendChild(coin);
+    }
+    [[30,20],[38,25],[46,18]].forEach(function(p){
+      var beam = div('energy-beam');
+      beam.style.left = p[0]+'%'; beam.style.top='10%'; beam.style.height='70%';
+      beam.style.animationDelay = (Math.random()*2)+'s';
+      treasury.appendChild(beam);
+    });
+
+    var radar = document.getElementById('room-radar');
+    var dish = div('radar-dish'); dish.style.left='58%'; dish.style.top='30%';
+    var sweep = div('radar-sweep'); dish.appendChild(sweep);
+    radar.appendChild(dish);
+    for(var j=0;j<4;j++){
+      var blip = div('blip');
+      blip.style.left = (55 + Math.random()*30) + '%';
+      blip.style.top = (25 + Math.random()*35) + '%';
+      blip.style.animationDelay = (Math.random()*2.6)+'s';
+      radar.appendChild(blip);
+    }
+
+    // generic desks scattered in bridge/treasury/radar for visual density
+    [['room-bridge',[20,25],[30,60]], ['room-treasury',[70,68]], ['room-radar',[18,60],[22,30]]].forEach(function(cfg){
+      var room = document.getElementById(cfg[0]);
+      for(var k=1;k<cfg.length;k++){
+        var d = div('desk');
+        d.style.left = cfg[k][0]+'%'; d.style.top = cfg[k][1]+'%';
+        room.appendChild(d);
+      }
+    });
+  }
+
+  function div(cls){ var d = document.createElement('div'); d.className = cls; return d; }
+
+  /* Smoke particle spawner */
+  setInterval(function(){
+    if(!window.__smokeOrigin) return;
+    var origin = window.__smokeOrigin;
+    var s = div('smoke');
+    s.style.left = origin.xPct + '%';
+    s.style.bottom = origin.yPct + '%';
+    origin.el.appendChild(s);
+    setTimeout(function(){ s.remove(); }, 3200);
+  }, 700);
+
+  /* ======================= AGENT SPRITES ======================= */
+
+  function buildAgentSprites(){
+    Object.keys(state.agents).forEach(function(id){
+      var a = state.agents[id];
+      var room = document.getElementById('room-'+a.room);
+      var el = document.createElement('div');
+      el.className = 'agent status-'+a.status;
+      el.id = 'sprite-'+id;
+      el.style.left = a.x+'%';
+      el.style.top = a.y+'%';
+
+      var ring = div('agent-ring');
+      var body = div('body'); body.style.background = a.color; body.style.boxShadow = '0 0 4px '+a.color;
+      var head = div('head'); head.style.background = a.palette.skin; head.style.boxShadow = 'inset 0 -2px 0 '+a.palette.hair;
+      var legL = div('legL'); legL.style.background = shade(a.color, -30);
+      var legR = div('legR'); legR.style.background = shade(a.color, -30);
+      var badge = document.createElement('div');
+      badge.className = 'badge status-'+a.status;
+      badge.textContent = a.task;
+      var nameTag = document.createElement('div');
+      nameTag.className = 'name-tag';
+      nameTag.textContent = a.name;
+
+      el.appendChild(ring);
+      el.appendChild(legL);
+      el.appendChild(legR);
+      el.appendChild(body);
+      el.appendChild(head);
+      el.appendChild(badge);
+      el.appendChild(nameTag);
+
+      el.addEventListener('click', function(){
+        showToast(a.name + ' :: ' + a.status.toUpperCase() + ' :: ' + a.task);
+      });
+
+      room.appendChild(el);
+    });
+  }
+
+  function shade(hex, pct){
+    var num = parseInt(hex.slice(1),16);
+    var r = Math.max(0, Math.min(255, (num>>16) + pct));
+    var g = Math.max(0, Math.min(255, ((num>>8)&0xff) + pct));
+    var b = Math.max(0, Math.min(255, (num&0xff) + pct));
+    return 'rgb('+r+','+g+','+b+')';
+  }
+
+  function refreshAgentDOM(id){
+    var a = state.agents[id];
+    var el = document.getElementById('sprite-'+id);
+    if(!el) return;
+    el.className = 'agent status-'+a.status + (a.walking ? ' walking' : '') + (a.facing < 0 ? ' flipped' : '');
+    el.style.left = a.x+'%';
+    el.style.top = a.y+'%';
+    var badge = el.querySelector('.badge');
+    badge.className = 'badge status-'+a.status;
+    badge.textContent = a.task;
+    var ring = el.querySelector('.agent-ring');
+  }
+
+  function moveAgentWithinRoom(id){
+    var a = state.agents[id];
+    if(a.status === 'paused' || a.status === 'error') return;
+    var newX = clamp(randRange(10,80), 10, 82);
+    var newY = clamp(randRange(30,80), 30, 82);
+    a.facing = newX > a.x ? 1 : -1;
+    a.x = newX; a.y = newY;
+    a.walking = true;
+    refreshAgentDOM(id);
+    setTimeout(function(){
+      a.walking = false;
+      refreshAgentDOM(id);
+    }, 1600);
+  }
+
+  function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+
+  function moveAgentToRoom(id, newRoom){
+    var a = state.agents[id];
+    var oldEl = document.getElementById('sprite-'+id);
+    if(oldEl) oldEl.remove();
+    a.room = newRoom;
+    a.x = 10 + Math.random()*20;
+    a.y = 40 + Math.random()*30;
+    a.task = pick(TASKS_BY_ROOM[newRoom]);
+    var room = document.getElementById('room-'+newRoom);
+    var el = document.createElement('div');
+    el.id = 'sprite-'+id;
+    room.appendChild(el);
+    rebuildSingleSprite(id);
+  }
+
+  function rebuildSingleSprite(id){
+    var a = state.agents[id];
+    var el = document.getElementById('sprite-'+id);
+    el.innerHTML = '';
+    el.className = 'agent status-'+a.status;
+    el.style.left = a.x+'%';
+    el.style.top = a.y+'%';
+    var ring = div('agent-ring');
+    var body = div('body'); body.style.background = a.color; body.style.boxShadow = '0 0 4px '+a.color;
+    var head = div('head'); head.style.background = a.palette.skin; head.style.boxShadow = 'inset 0 -2px 0 '+a.palette.hair;
+    var legL = div('legL'); legL.style.background = shade(a.color, -30);
+    var legR = div('legR'); legR.style.background = shade(a.color, -30);
+    var badge = document.createElement('div');
+    badge.className = 'badge status-'+a.status;
+    badge.textContent = a.task;
+    var nameTag = document.createElement('div');
+    nameTag.className = 'name-tag';
+    nameTag.textContent = a.name;
+    el.appendChild(ring); el.appendChild(legL); el.appendChild(legR);
+    el.appendChild(body); el.appendChild(head); el.appendChild(badge); el.appendChild(nameTag);
+    el.addEventListener('click', function(){
+      showToast(a.name + ' :: ' + a.status.toUpperCase() + ' :: ' + a.task);
+    });
+  }
+
+  /* ======================= FEED ======================= */
+
+  var feedEl = document.getElementById('feed');
+
+  var LOG_TEMPLATES = {
+    info: [
+      '{name} started task: "{task}"',
+      '{name} synced with shared memory store',
+      '{name} checked rate-limit budget: OK',
+      '{name} completed a research pass',
+      'Scheduler tick: {name} queue refreshed'
+    ],
+    success: [
+      '{name} completed "{task}" successfully',
+      '{name} shipped an update',
+      'Deploy finished for {name}\'s workspace'
+    ],
+    warning: [
+      '{name} hit API rate limit — pausing',
+      '{name} retrying after transient error',
+      'Latency spike detected near {room}'
+    ],
+    error: [
+      '{name} threw an unhandled exception',
+      'Connection lost to {name}\'s workspace',
+      '{name} failed task: "{task}"'
+    ]
+  };
+
+  var PROPOSAL_TEMPLATES = [
+    { title:'New business plan proposed', body:'{name} proposes launching a niche Etsy shop for pixel-art stickers. Est. setup cost $40, break-even in ~3 weeks.' },
+    { title:'Budget reallocation requested', body:'{name} requests shifting $120 from ad spend to API credits for {room} operations.' },
+    { title:'Scope change requested', body:'{name} wants to expand research scope to include 3 additional competitor markets.' },
+    { title:'Schedule change proposed', body:'{name} proposes shifting the nightly crawl job to 02:00 UTC to reduce rate-limit collisions.' }
+  ];
+
+  function addFeedEntry(kind, text, meta){
+    var entry = document.createElement('div');
+    entry.className = 'entry ' + kind;
+    var metaRow = document.createElement('div');
+    metaRow.className = 'meta';
+    var time = new Date();
+    var hh = String(time.getHours()).padStart(2,'0');
+    var mm = String(time.getMinutes()).padStart(2,'0');
+    var ss = String(time.getSeconds()).padStart(2,'0');
+    metaRow.innerHTML = '<span>'+hh+':'+mm+':'+ss+'</span><span class="tag">'+kind.toUpperCase()+'</span>';
+    var msg = document.createElement('div');
+    msg.className = 'msg';
+    msg.textContent = text;
+    entry.appendChild(metaRow);
+    entry.appendChild(msg);
+    feedEl.appendChild(entry);
+    feedEl.scrollTop = feedEl.scrollHeight;
+    while(feedEl.children.length > 60){
+      feedEl.removeChild(feedEl.firstChild);
+    }
+    return entry;
+  }
+
+  function addProposalEntry(){
+    var t = pick(PROPOSAL_TEMPLATES);
+    var agentIds = Object.keys(state.agents);
+    var agent = state.agents[pick(agentIds)];
+    var text = t.body.replace('{name}', agent.name).replace('{room}', agent.room);
+
+    var entry = document.createElement('div');
+    entry.className = 'entry proposal';
+    var metaRow = document.createElement('div');
+    metaRow.className = 'meta';
+    var time = new Date();
+    var hh = String(time.getHours()).padStart(2,'0');
+    var mm = String(time.getMinutes()).padStart(2,'0');
+    metaRow.innerHTML = '<span>'+hh+':'+mm+'</span><span class="tag">PROPOSAL</span>';
+    var title = document.createElement('div');
+    title.className = 'msg';
+    title.style.color = '#b464ff';
+    title.textContent = t.title;
+    var body = document.createElement('div');
+    body.className = 'msg';
+    body.style.marginTop='3px';
+    body.textContent = text;
+
+    var actions = document.createElement('div');
+    actions.className = 'proposal-actions';
+    var approveBtn = document.createElement('button');
+    approveBtn.className = 'pbtn approve';
+    approveBtn.textContent = 'Approve';
+    var rejectBtn = document.createElement('button');
+    rejectBtn.className = 'pbtn reject';
+    rejectBtn.textContent = 'Reject';
+
+    function resolve(kind){
+      actions.remove();
+      entry.classList.add('resolved');
+      var tag = document.createElement('div');
+      tag.className = 'resolved-tag ' + (kind === 'approved' ? 'approved' : 'rejected');
+      tag.textContent = kind === 'approved' ? '✔ Approved by operator' : '✘ Rejected by operator';
+      entry.appendChild(tag);
+      addFeedEntry(kind === 'approved' ? 'success' : 'warning',
+        agent.name + '\'s proposal was ' + kind + '.');
+    }
+    approveBtn.addEventListener('click', function(){ resolve('approved'); });
+    rejectBtn.addEventListener('click', function(){ resolve('rejected'); });
+
+    actions.appendChild(approveBtn);
+    actions.appendChild(rejectBtn);
+    entry.appendChild(metaRow);
+    entry.appendChild(title);
+    entry.appendChild(body);
+    entry.appendChild(actions);
+    feedEl.appendChild(entry);
+    feedEl.scrollTop = feedEl.scrollHeight;
+  }
+
+  function addErrorAlert(){
+    var agentIds = Object.keys(state.agents);
+    var id = pick(agentIds);
+    var agent = state.agents[id];
+    agent.status = 'error';
+    agent.task = 'Error — awaiting operator input';
+    refreshAgentDOM(id);
+    renderRoster();
+
+    var entry = document.createElement('div');
+    entry.className = 'entry error';
+    var metaRow = document.createElement('div');
+    metaRow.className = 'meta';
+    var time = new Date();
+    metaRow.innerHTML = '<span>'+String(time.getHours()).padStart(2,'0')+':'+String(time.getMinutes()).padStart(2,'0')+'</span><span class="tag">ALERT</span>';
+    var title = document.createElement('div');
+    title.className = 'msg';
+    title.style.color = 'var(--danger)';
+    title.textContent = agent.name + ' encountered a critical error';
+    var body = document.createElement('div');
+    body.className = 'msg';
+    body.style.marginTop='3px';
+    body.textContent = 'Unhandled exception in ' + agent.room + ' workspace. Manual intervention requested.';
+
+    var actions = document.createElement('div');
+    actions.className = 'proposal-actions';
+    var retryBtn = document.createElement('button');
+    retryBtn.className = 'pbtn approve';
+    retryBtn.textContent = 'Retry';
+    var killBtn = document.createElement('button');
+    killBtn.className = 'pbtn reject';
+    killBtn.textContent = 'Terminate';
+
+    function resolve(kind){
+      actions.remove();
+      entry.classList.add('resolved');
+      var tag = document.createElement('div');
+      if(kind === 'retry'){
+        tag.className = 'resolved-tag approved';
+        tag.textContent = '✔ Retry issued';
+        agent.status = 'active';
+        agent.task = pick(TASKS_BY_ROOM[agent.room]);
+      } else {
+        tag.className = 'resolved-tag rejected';
+        tag.textContent = '✘ Terminated';
+        agent.status = 'idle';
+        agent.task = 'Terminated — awaiting restart';
+      }
+      refreshAgentDOM(id);
+      renderRoster();
+      entry.appendChild(tag);
+      addFeedEntry(kind === 'retry' ? 'success' : 'warning', agent.name + ' ' + (kind==='retry' ? 'resumed after retry.' : 'was terminated by operator.'));
+    }
+    retryBtn.addEventListener('click', function(){ resolve('retry'); });
+    killBtn.addEventListener('click', function(){ resolve('kill'); });
+
+    actions.appendChild(retryBtn);
+    actions.appendChild(killBtn);
+    entry.appendChild(metaRow);
+    entry.appendChild(title);
+    entry.appendChild(body);
+    entry.appendChild(actions);
+    feedEl.appendChild(entry);
+    feedEl.scrollTop = feedEl.scrollHeight;
+  }
+
+  /* ======================= ROSTER ======================= */
+
+  var rosterEl = document.getElementById('roster');
+
+  function renderRoster(){
+    rosterEl.innerHTML = '';
+    Object.keys(state.agents).forEach(function(id){
+      var a = state.agents[id];
+      var card = document.createElement('div');
+      card.className = 'roster-card';
+      var dot = document.createElement('div');
+      dot.className = 'roster-dot status-'+a.status;
+      var info = document.createElement('div');
+      info.className = 'roster-info';
+      var name = document.createElement('div');
+      name.className = 'roster-name';
+      name.textContent = a.name;
+      var task = document.createElement('div');
+      task.className = 'roster-task';
+      task.textContent = a.task;
+      info.appendChild(name);
+      info.appendChild(task);
+      card.appendChild(dot);
+      card.appendChild(info);
+      if(a.status === 'paused' && a.timer > 0){
+        var timer = document.createElement('div');
+        timer.className = 'roster-timer';
+        timer.id = 'timer-'+id;
+        timer.textContent = formatTimer(a.timer);
+        card.appendChild(timer);
+      }
+      rosterEl.appendChild(card);
+    });
+  }
+
+  function formatTimer(sec){
+    var h = Math.floor(sec/3600);
+    var m = Math.floor((sec%3600)/60);
+    var s = sec%60;
+    if(h>0) return h+'h '+m+'m';
+    return m+'m '+s+'s';
+  }
+
+  /* ======================= TOAST ======================= */
+
+  var toastEl = document.getElementById('toast');
+  var toastTimeout;
+  function showToast(text){
+    toastEl.textContent = text;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(function(){ toastEl.classList.remove('show'); }, 2600);
+  }
+
+  /* ======================= SIMULATION LOOP ======================= */
+
+  function simulateAgentAction(){
+    var ids = Object.keys(state.agents).filter(function(id){
+      return state.agents[id].status === 'active';
+    });
+    if(ids.length === 0) return;
+    var id = pick(ids);
+    var a = state.agents[id];
+
+    var roll = Math.random();
+    if(roll < 0.65){
+      moveAgentWithinRoom(id);
+      a.task = pick(TASKS_BY_ROOM[a.room]);
+      refreshAgentDOM(id);
+      addFeedEntry('info', fmt(pick(LOG_TEMPLATES.info), a));
+    } else if(roll < 0.85){
+      var rooms = Object.keys(ROOM_COLORS).filter(function(r){ return r !== a.room; });
+      moveAgentToRoom(id, pick(rooms));
+      addFeedEntry('info', a.name + ' relocated to ' + a.room.toUpperCase());
+    } else {
+      addFeedEntry('success', fmt(pick(LOG_TEMPLATES.success), a));
+    }
+    renderRoster();
+  }
+
+  function fmt(tpl, a){
+    return tpl.replace('{name}', a.name).replace('{task}', a.task).replace('{room}', a.room);
+  }
+
+  function triggerRoomEvent(){
+    var rooms = Object.keys(ROOM_COLORS);
+    var r = pick(rooms);
+    var el = document.getElementById('room-'+r);
+    el.classList.remove('flare');
+    void el.offsetWidth;
+    el.classList.add('flare');
+    addFeedEntry('info', 'Environmental spike detected in ' + r.toUpperCase() + ' — systems nominal.');
+  }
+
+  function simulateAlert(){
+    var roll = Math.random();
+    if(roll < 0.5){
+      addProposalEntry();
+    } else {
+      addErrorAlert();
+    }
+  }
+
+  function pauseRandomAgentForRateLimit(){
+    var ids = Object.keys(state.agents).filter(function(id){ return state.agents[id].status === 'active'; });
+    if(ids.length === 0) return;
+    var id = pick(ids);
+    var a = state.agents[id];
+    var mins = Math.floor(randRange(5, 180));
+    a.status = 'paused';
+    a.timer = mins*60;
+    a.task = 'Paused (Rate Limit — resuming ' + formatTimer(a.timer) + ')';
+    refreshAgentDOM(id);
+    renderRoster();
+    addFeedEntry('warning', a.name + ' hit a rate limit. Resuming in ' + formatTimer(a.timer) + '.');
+  }
+
+  /* per-second timer tick for paused agents */
+  setInterval(function(){
+    Object.keys(state.agents).forEach(function(id){
+      var a = state.agents[id];
+      if(a.status === 'paused' && a.timer > 0){
+        a.timer -= 1;
+        var timerEl = document.getElementById('timer-'+id);
+        if(timerEl) timerEl.textContent = formatTimer(a.timer);
+        if(a.timer <= 0){
+          a.status = 'active';
+          a.task = pick(TASKS_BY_ROOM[a.room]);
+          refreshAgentDOM(id);
+          renderRoster();
+          addFeedEntry('success', a.name + ' resumed after rate-limit cooldown.');
+        }
+      }
+    });
+  }, 1000);
+
+  /* autonomous background sim ticks */
+  var actionTicker, alertTicker, rateLimitTicker;
+  function startAutonomousTicks(){
+    actionTicker = setInterval(function(){ if(state.autonomous) simulateAgentAction(); }, 4000);
+    alertTicker = setInterval(function(){ if(state.autonomous && Math.random() < 0.5) simulateAlert(); }, 14000);
+    rateLimitTicker = setInterval(function(){ if(state.autonomous && Math.random() < 0.4) pauseRandomAgentForRateLimit(); }, 20000);
+  }
+
+  /* ======================= WIRE UP CONTROLS ======================= */
+
+  document.getElementById('btnAction').addEventListener('click', simulateAgentAction);
+  document.getElementById('btnRoomEvent').addEventListener('click', triggerRoomEvent);
+  document.getElementById('btnAlert').addEventListener('click', simulateAlert);
+
+  var masterSwitch = document.getElementById('masterSwitch');
+  masterSwitch.addEventListener('click', function(){
+    state.autonomous = !state.autonomous;
+    masterSwitch.classList.toggle('on', state.autonomous);
+    addFeedEntry(state.autonomous ? 'success' : 'warning',
+      state.autonomous ? 'Autonomous mode ENABLED — agents resuming background activity.' : 'Autonomous mode DISABLED — agents holding position.');
+  });
+
+  /* ======================= INIT ======================= */
+
+  buildRoomDecor();
+  buildAgentSprites();
+  renderRoster();
+  addFeedEntry('info', 'System boot complete. 6 agents online.');
+  addFeedEntry('success', 'All workspace connections nominal.');
+  startAutonomousTicks();
+
+})();
+</script>
+</body>
+</html>
