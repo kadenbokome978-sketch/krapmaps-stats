@@ -182,33 +182,21 @@
   .pathway.vert{ border-left:2px solid var(--panel-line); border-right:2px solid var(--panel-line); }
   .pathway.horiz{ border-top:2px solid var(--panel-line); border-bottom:2px solid var(--panel-line); }
 
-  .pathway::before{ /* grate/tread texture across the full walkway width */
-    content:'';
-    position:absolute; inset:0;
-    opacity:0.5;
-  }
-  .pathway.vert::before{
-    background:repeating-linear-gradient(180deg, rgba(255,255,255,0.05) 0 2px, transparent 2px 22px);
-  }
-  .pathway.horiz::before{
-    background:repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0 2px, transparent 2px 22px);
-  }
-
-  .pathway::after{ /* glowing conduit down the middle */
+  .pathway::after{ /* one bold glowing conduit filling most of the walkway */
     content:'';
     position:absolute;
-    opacity:0.9;
+    opacity:0.95;
   }
   .pathway.vert::after{
-    left:50%; top:0; bottom:0; width:12px; margin-left:-6px;
-    background:repeating-linear-gradient(180deg, var(--pathcolor,var(--bridge)) 0 8px, transparent 8px 20px);
-    box-shadow:0 0 12px var(--pathcolor,var(--bridge));
+    left:50%; top:0; bottom:0; width:70%; margin-left:-35%;
+    background:repeating-linear-gradient(180deg, var(--pathcolor,var(--bridge)) 0 10px, transparent 10px 24px);
+    box-shadow:0 0 16px var(--pathcolor,var(--bridge));
     animation:pathFlowV 0.8s linear infinite;
   }
   .pathway.horiz::after{
-    top:50%; left:0; right:0; height:12px; margin-top:-6px;
-    background:repeating-linear-gradient(90deg, var(--pathcolor,var(--bridge)) 0 8px, transparent 8px 20px);
-    box-shadow:0 0 12px var(--pathcolor,var(--bridge));
+    top:50%; left:0; right:0; height:70%; margin-top:-35%;
+    background:repeating-linear-gradient(90deg, var(--pathcolor,var(--bridge)) 0 10px, transparent 10px 24px);
+    box-shadow:0 0 16px var(--pathcolor,var(--bridge));
     animation:pathFlowH 0.8s linear infinite;
   }
   @keyframes pathFlowV{ 0%{background-position:0 0;} 100%{background-position:0 20px;} }
@@ -287,7 +275,23 @@
     color:var(--text-dim);
     z-index:5;
   }
-  .room.bridge{ color:var(--bridge); border-color:#123423; box-shadow:inset 0 0 40px rgba(57,255,143,0.08), 0 0 14px rgba(57,255,143,0.12);}
+  /* The Bridge is a true circle, not a rectangular panel - fixed equal
+     width/height, centered in its grid cell rather than stretched to
+     fill it. Its label floats above as a separate unclipped sibling. */
+  .room.bridge{
+    color:var(--bridge); border-color:#123423;
+    box-shadow:inset 0 0 40px rgba(57,255,143,0.08), 0 0 22px rgba(57,255,143,0.2);
+    width:min(230px, 92%); height:min(230px, 92%);
+    place-self:center;
+    border-radius:50%;
+  }
+  #bridge-label{
+    grid-area: 3 / 3 / 4 / 4;
+    place-self:start center;
+    margin-top:4px;
+    z-index:6;
+    text-align:center;
+  }
   .room.workshop{ color:var(--workshop); border-color:#3a2410; box-shadow:inset 0 0 40px rgba(255,157,43,0.08), 0 0 14px rgba(255,157,43,0.12);}
   .room.treasury{ color:var(--treasury); border-color:#2a1640; box-shadow:inset 0 0 40px rgba(180,100,255,0.08), 0 0 14px rgba(180,100,255,0.12);}
   .room.radar{ color:var(--radar); border-color:#0f313d; box-shadow:inset 0 0 40px rgba(56,228,255,0.08), 0 0 14px rgba(56,228,255,0.12);}
@@ -757,9 +761,11 @@
 
   <div id="main">
     <div id="rooms">
+      <div id="bridge-label">
+        <div class="room-label" style="position:static;">The Bridge</div>
+        <div class="room-sub" style="position:static;">central console</div>
+      </div>
       <div class="room bridge" id="room-bridge">
-        <div class="room-label">The Bridge</div>
-        <div class="room-sub">central console</div>
         <div class="console-core">
           <div class="core-stub n"></div>
           <div class="core-stub e"></div>
@@ -848,6 +854,7 @@
   function seedDemoAgents(){
     state.agents = {};
     AGENTS.forEach(function(a, i){
+      var pos = randomPosInRoom(a.room);
       state.agents[a.id] = {
         id:a.id,
         name:a.name,
@@ -856,8 +863,8 @@
         color: pickAgentColor(i),
         status: i === 4 ? 'paused' : 'active',
         task: i === 4 ? 'Paused (Rate Limit)' : pick(TASKS_BY_ROOM[a.room]),
-        x: 20 + Math.random()*50,
-        y: 40 + Math.random()*40,
+        x: pos.x,
+        y: pos.y,
         facing: 1,
         walking:false,
         timer: i === 4 ? 118*60 : 0 /* seconds, only meaningful when paused */
@@ -872,6 +879,21 @@
   }
   function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
   function randRange(a,b){ return a + Math.random()*(b-a); }
+
+  /* The Bridge room is a circle, not a rectangle, so agents need a
+     tighter placement box that's guaranteed to stay inside the circle
+     (rather than the generic bounds used for the rectangular rooms).
+     A function (not a `var` object) so it's safe to call before this
+     line runs - function declarations are fully hoisted, `var` init
+     is not, and seedDemoAgents() below is invoked immediately. */
+  function roomBounds(room){
+    if(room === 'bridge') return { x:[28,72], y:[28,72] };
+    return { x:[10,82], y:[30,82] };
+  }
+  function randomPosInRoom(room){
+    var b = roomBounds(room);
+    return { x: randRange(b.x[0], b.x[1]), y: randRange(b.y[0], b.y[1]) };
+  }
 
   /* deterministic color/palette assignment for agents that arrive from a
      live relay feed (rather than the fixed demo AGENTS list above) */
@@ -1023,10 +1045,9 @@
   function moveAgentWithinRoom(id){
     var a = state.agents[id];
     if(a.status === 'paused' || a.status === 'error') return;
-    var newX = clamp(randRange(10,80), 10, 82);
-    var newY = clamp(randRange(30,80), 30, 82);
-    a.facing = newX > a.x ? 1 : -1;
-    a.x = newX; a.y = newY;
+    var pos = randomPosInRoom(a.room);
+    a.facing = pos.x > a.x ? 1 : -1;
+    a.x = pos.x; a.y = pos.y;
     a.walking = true;
     refreshAgentDOM(id);
     setTimeout(function(){
@@ -1042,8 +1063,9 @@
     var oldEl = document.getElementById('sprite-'+id);
     if(oldEl) oldEl.remove();
     a.room = newRoom;
-    a.x = 10 + Math.random()*20;
-    a.y = 40 + Math.random()*30;
+    var pos = randomPosInRoom(newRoom);
+    a.x = pos.x;
+    a.y = pos.y;
     a.task = pick(TASKS_BY_ROOM[newRoom]);
     var room = document.getElementById('room-'+newRoom);
     var el = document.createElement('div');
@@ -1082,8 +1104,9 @@
     var oldEl = document.getElementById('sprite-'+id);
     if(oldEl) oldEl.remove();
     a.room = newRoom;
-    a.x = typeof x === 'number' ? x : 10 + Math.random()*20;
-    a.y = typeof y === 'number' ? y : 40 + Math.random()*30;
+    var fallbackPos = randomPosInRoom(newRoom);
+    a.x = typeof x === 'number' ? x : fallbackPos.x;
+    a.y = typeof y === 'number' ? y : fallbackPos.y;
     var room = document.getElementById('room-'+newRoom);
     var el = document.createElement('div');
     el.id = 'sprite-'+id;
@@ -1101,16 +1124,18 @@
     var id = data.id;
     var isNew = !state.agents[id];
     if(isNew){
+      var initRoom = data.room || 'bridge';
+      var initPos = randomPosInRoom(initRoom);
       state.agents[id] = {
         id:id,
         name: data.name || id,
-        room: data.room || 'bridge',
+        room: initRoom,
         palette: paletteForId(id),
         color: colorForId(id),
         status: 'active',
         task: '',
-        x: 10 + Math.random()*60,
-        y: 30 + Math.random()*40,
+        x: initPos.x,
+        y: initPos.y,
         facing: 1,
         walking:false,
         timer: 0
