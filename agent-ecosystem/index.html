@@ -1,0 +1,1056 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Agent Ecosystem // Ops Deck</title>
+<script src="vendor/react.production.min.js"></script>
+<script src="vendor/react-dom.production.min.js"></script>
+<script src="vendor/babel.min.js"></script>
+<script src="vendor/tailwind-browser.js"></script>
+<style>
+  :root {
+    --bridge: #39ff88;
+    --workshop: #ff8c1a;
+    --treasury: #ffd23d;
+    --radar: #b537f2;
+    --ok: #39ff88;
+    --idle: #ffd23d;
+    --paused: #39c6ff;
+    --error: #ff3d5d;
+  }
+  html, body { background:#05060a; }
+  body {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  }
+  .px-font { letter-spacing: 0.03em; }
+  .pixelated { image-rendering: pixelated; image-rendering: crisp-edges; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: #0b0e16; }
+  ::-webkit-scrollbar-thumb { background: #2a3244; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #3c4863; }
+
+  @keyframes pulseGlow {
+    0%, 100% { box-shadow: 0 0 4px 0 currentColor; opacity: 1; }
+    50% { box-shadow: 0 0 12px 2px currentColor; opacity: 0.75; }
+  }
+  .pulse-dot { animation: pulseGlow 1.6s ease-in-out infinite; }
+
+  @keyframes flicker {
+    0%, 19%, 21%, 23%, 54%, 56%, 100% { opacity: 1; }
+    20%, 22%, 55% { opacity: 0.55; }
+  }
+  .flicker { animation: flicker 3.2s linear infinite; }
+
+  @keyframes scan {
+    0% { transform: translateY(-100%); }
+    100% { transform: translateY(100%); }
+  }
+
+  @keyframes approvalPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 61, 154, 0.55); }
+    50% { box-shadow: 0 0 0 4px rgba(255, 61, 154, 0); }
+  }
+  .approval-card { animation: approvalPulse 1.8s ease-in-out infinite; }
+
+  .toggle { appearance: none; width: 34px; height: 18px; background: #1a2030; border: 1px solid #2f3a52; border-radius: 2px; position: relative; cursor: pointer; outline: none; flex-shrink: 0; }
+  .toggle::after { content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; background: #55607a; border-radius: 1px; transition: all 0.15s ease; }
+  .toggle:checked { background: #0d2a1c; border-color: var(--ok); }
+  .toggle:checked::after { left: 18px; background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+
+  .btn-pixel {
+    border: 1px solid #2f3a52;
+    background: #10141e;
+    transition: all 0.12s ease;
+  }
+  .btn-pixel:hover { border-color: #55607a; background: #171d2b; transform: translateY(-1px); }
+  .btn-pixel:active { transform: translateY(0); }
+
+  .divider-glow { height: 1px; background: linear-gradient(90deg, transparent, #2f3a52, transparent); }
+</style>
+</head>
+<body class="text-slate-200">
+<div id="root"></div>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useCallback, useMemo } = React;
+
+/* ---------------------------------------------------------------------- */
+/* Constants & seed data                                                   */
+/* ---------------------------------------------------------------------- */
+
+const CANVAS_W = 880;
+const CANVAS_H = 620;
+
+const ROOM_DEFS = [
+  { id: "bridge",    name: "THE BRIDGE",  type: "bridge",    glow: "#39ff88", x: 20,  y: 20,  w: 410, h: 280 },
+  { id: "workshop",  name: "WORKSHOP",    type: "workshop",  glow: "#ff8c1a", x: 450, y: 20,  w: 410, h: 280 },
+  { id: "treasury",  name: "TREASURY",    type: "treasury",  glow: "#ffd23d", x: 20,  y: 320, w: 410, h: 280 },
+  { id: "radar",     name: "RADAR",       type: "radar",     glow: "#b537f2", x: 450, y: 320, w: 410, h: 280 },
+];
+
+const WORKSTATIONS = {
+  bridge:   [{ fx: .18, fy: .74 }, { fx: .5, fy: .82 }, { fx: .82, fy: .74 }, { fx: .5, fy: .5 }],
+  workshop: [{ fx: .72, fy: .78 }, { fx: .45, fy: .82 }, { fx: .24, fy: .5 }],
+  treasury: [{ fx: .5, fy: .8 }, { fx: .24, fy: .68 }, { fx: .76, fy: .68 }],
+  radar:    [{ fx: .5, fy: .48 }, { fx: .22, fy: .78 }, { fx: .78, fy: .78 }],
+};
+
+const STATUS_COLOR = { working: "#39ff88", idle: "#ffd23d", paused: "#39c6ff", error: "#ff3d5d" };
+const STATUS_LABEL = { working: "ACTIVE", idle: "IDLE", paused: "PAUSED", error: "ERROR" };
+
+const WORKING_TASKS = [
+  "Designing Etsy Listing", "Drafting Cold Outreach Email", "Optimizing Ad Spend",
+  "Scraping Competitor Prices", "Writing Product Description", "Analyzing TikTok Trends",
+  "Building Landing Page Copy", "Refactoring Pricing Model", "Summarizing Customer Reviews",
+  "Researching Business Idea: Pixel Pet Accessories", "Auditing Treasury Ledger",
+  "Rendering New Sprite Assets", "Sweeping Radar for Market Signals",
+];
+const IDLE_TASKS = ["Standing By", "Awaiting Next Directive", "Monitoring Task Queue"];
+const ERROR_TASKS = ["Error: API Timeout", "Error: Invalid Response Schema", "Blocked: Missing Credentials"];
+
+const PLAN_NAMES = [
+  "Pixel Pet Harness Line", "Automated Etsy Restock Bot", "TikTok Growth Sprint Q3",
+  "Micro-SaaS: Invoice Reminder Tool", "Dropship: Retro Desk Lamps",
+];
+const APPROVAL_ACTIONS = [
+  "publish the new Etsy listing", "spend $50 on Facebook ad boost", "send the outreach email batch",
+  "deploy the updated pricing model", "approve vendor payout of $120",
+];
+const ERROR_MSGS = ["API rate limit exceeded", "malformed JSON response", "auth token expired", "upstream service 503"];
+
+const AGENT_SEED = [
+  { id: "aria",  name: "ARIA",  room: "bridge",   color: "#39ff88", status: "idle",    task: "Standing By" },
+  { id: "nova",  name: "NOVA",  room: "bridge",   color: "#ff5da2", status: "working", task: "Drafting Cold Outreach Email" },
+  { id: "forge", name: "FORGE", room: "workshop", color: "#ff8c1a", status: "working", task: "Building Landing Page Copy" },
+  { id: "pixel", name: "PIXEL", room: "workshop", color: "#39c6ff", status: "paused",  task: "" },
+  { id: "ledger",name: "LEDGER",room: "treasury", color: "#ffd23d", status: "working", task: "Optimizing Ad Spend" },
+  { id: "scout", name: "SCOUT", room: "radar",    color: "#b537f2", status: "working", task: "Researching Business Idea: Pixel Pet Accessories" },
+];
+
+const SIM_HOUR_MS = 12000; // 1 "simulated hour" = 12 real seconds
+
+/* ---------------------------------------------------------------------- */
+/* Utilities                                                               */
+/* ---------------------------------------------------------------------- */
+
+const rand = (a, b) => a + Math.random() * (b - a);
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+function roomPoint(room, fx, fy) {
+  const mx = 36, myTop = 54, myBot = 30;
+  return {
+    x: room.x + mx + fx * (room.w - 2 * mx),
+    y: room.y + myTop + fy * (room.h - myTop - myBot),
+  };
+}
+
+function pickWaypoint(room, occupied) {
+  const pts = WORKSTATIONS[room.type] || [{ fx: .5, fy: .6 }];
+  const minDist = 46;
+  const others = occupied || [];
+  let best = null, bestScore = -1;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const p = pick(pts);
+    const cand = roomPoint(room, p.fx + rand(-0.04, 0.04), p.fy + rand(-0.04, 0.04));
+    const nearest = others.reduce((min, o) => Math.min(min, Math.hypot(o.x - cand.x, o.y - cand.y)), Infinity);
+    if (nearest >= minDist) return cand;
+    if (nearest > bestScore) { bestScore = nearest; best = cand; }
+  }
+  return best;
+}
+
+function fmtClock(date) {
+  return date.toLocaleTimeString([], { hour12: false });
+}
+
+function fmtCountdown(ms) {
+  if (ms <= 0) return "0h 00m";
+  const totalMin = Math.ceil(ms / SIM_HOUR_MS * 60);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return h > 0 ? `${h}h ${String(m).padStart(2, "0")}m` : `${m}m`;
+}
+
+function roundRectPath(ctx, x, y, w, h, r) {
+  if (w < 2 * r) r = w / 2;
+  if (h < 2 * r) r = h / 2;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+let LOG_ID = 1;
+let PENDING_APPROVAL_AGENT = null;
+
+/* ---------------------------------------------------------------------- */
+/* World factory                                                           */
+/* ---------------------------------------------------------------------- */
+
+function makeWorld() {
+  const rooms = ROOM_DEFS.map((r) => ({ ...r, status: "normal" }));
+  const placed = [];
+  const agents = AGENT_SEED.map((a) => {
+    const room = rooms.find((r) => r.id === a.room);
+    const occupied = placed.filter((o) => o.room === a.room);
+    const p = pickWaypoint(room, occupied);
+    placed.push({ room: a.room, x: p.x, y: p.y });
+    const isPaused = a.status === "paused";
+    return {
+      ...a,
+      task: isPaused ? "" : a.task,
+      autonomous: true,
+      rateLimitRemaining: isPaused ? rand(SIM_HOUR_MS * 1.2, SIM_HOUR_MS * 2.4) : 0,
+      x: p.x, y: p.y,
+      target: p,
+      waitUntil: performance.now() + rand(1500, 4000),
+      bob: rand(0, 10),
+      nextCycleMs: rand(6000, 14000),
+    };
+  });
+  return { rooms, agents };
+}
+
+function seedLogs() {
+  const now = Date.now();
+  return [
+    { id: LOG_ID++, ts: now - 240000, kind: "info", agent: "SCOUT", text: "Completed task: Scanning Q3 market trends" },
+    { id: LOG_ID++, ts: now - 150000, kind: "plan", agent: "SCOUT", text: 'Proposed a new business plan: "Pixel Pet Harness Line"' },
+    { id: LOG_ID++, ts: now - 90000, kind: "warn", agent: "PIXEL", text: "Hit API rate limit — backing off and pausing" },
+    {
+      id: LOG_ID++, ts: now - 30000, kind: "approval", agent: "LEDGER",
+      text: "Requests approval to spend $50 on Facebook ad boost",
+      resolved: null, relatedAgent: "ledger",
+    },
+  ];
+}
+
+/* ---------------------------------------------------------------------- */
+/* Canvas rendering                                                        */
+/* ---------------------------------------------------------------------- */
+
+function drawTiledFloor(ctx, room, baseA, baseB) {
+  const tile = 20;
+  for (let ty = 0; ty < room.h; ty += tile) {
+    for (let tx = 0; tx < room.w; tx += tile) {
+      const even = ((tx / tile) + (ty / tile)) % 2 === 0;
+      ctx.fillStyle = even ? baseA : baseB;
+      ctx.fillRect(room.x + tx, room.y + ty, tile, tile);
+    }
+  }
+}
+
+function drawRoomFrame(ctx, room) {
+  ctx.save();
+  ctx.shadowColor = room.glow;
+  ctx.shadowBlur = 14;
+  ctx.strokeStyle = room.glow;
+  ctx.lineWidth = 2.5;
+  ctx.strokeRect(room.x + 1, room.y + 1, room.w - 2, room.h - 2);
+  ctx.restore();
+
+  // label banner
+  ctx.save();
+  ctx.fillStyle = "#05060a";
+  ctx.fillRect(room.x + 10, room.y + 8, ctx.measureText(room.name).width + 34, 22);
+  ctx.strokeStyle = room.glow;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(room.x + 10, room.y + 8, ctx.measureText(room.name).width + 34, 22);
+  ctx.fillStyle = room.glow;
+  ctx.font = "bold 12px ui-monospace, monospace";
+  ctx.textBaseline = "middle";
+  ctx.fillText("◤ " + room.name, room.x + 18, room.y + 19);
+  ctx.restore();
+}
+
+function drawBridge(ctx, room, t) {
+  // back-wall monitors
+  ctx.save();
+  for (let i = 0; i < 5; i++) {
+    const mx = room.x + 40 + i * 68;
+    const my = room.y + 40;
+    const flick = 0.55 + 0.45 * Math.abs(Math.sin(t / 500 + i));
+    ctx.fillStyle = `rgba(57,255,136,${0.15 + flick * 0.2})`;
+    ctx.fillRect(mx, my, 48, 26);
+    ctx.strokeStyle = "#1c2230";
+    ctx.strokeRect(mx, my, 48, 26);
+    ctx.fillStyle = `rgba(10,255,239,${flick})`;
+    ctx.fillRect(mx + 4, my + 4, 40 * flick, 3);
+    ctx.fillRect(mx + 4, my + 10, 26 * (1 - flick * 0.4), 3);
+  }
+  // central hologram ring (pulsing)
+  const cx = room.x + room.w / 2, cy = room.y + room.h / 2 - 10;
+  for (let i = 0; i < 3; i++) {
+    const r = 20 + i * 12 + 4 * Math.sin(t / 400 + i);
+    ctx.beginPath();
+    ctx.strokeStyle = `rgba(10,255,239,${0.35 - i * 0.09})`;
+    ctx.lineWidth = 1.5;
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawWorkshop(ctx, room, t) {
+  ctx.save();
+  // waterfall (left strip)
+  const wfX = room.x + 22, wfW = 22, wfY = room.y + 34, wfH = room.h - 60;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(wfX, wfY, wfW, wfH);
+  ctx.clip();
+  ctx.fillStyle = "#0a1a24";
+  ctx.fillRect(wfX, wfY, wfW, wfH);
+  const dash = 14, gap = 8, speed = t / 26;
+  for (let y = -dash; y < wfH + dash; y += dash + gap) {
+    const yy = wfY + ((y + speed) % (wfH + dash + gap));
+    const grad = ctx.createLinearGradient(0, yy, 0, yy + dash);
+    grad.addColorStop(0, "rgba(57,198,255,0.15)");
+    grad.addColorStop(0.5, "rgba(57,198,255,0.75)");
+    grad.addColorStop(1, "rgba(57,198,255,0.15)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(wfX + 3, yy, wfW - 6, dash);
+  }
+  ctx.restore();
+  ctx.strokeStyle = "#274054";
+  ctx.strokeRect(wfX, wfY, wfW, wfH);
+
+  // furnace (right)
+  const fX = room.x + room.w - 110, fY = room.y + room.h - 130, fW = 80, fH = 96;
+  ctx.fillStyle = "#1a1410";
+  ctx.fillRect(fX, fY, fW, fH);
+  ctx.strokeStyle = "#3a2a1c";
+  ctx.strokeRect(fX, fY, fW, fH);
+  const flicker = 0.55 + 0.45 * Math.abs(Math.sin(t / 180) * Math.cos(t / 260));
+  ctx.save();
+  ctx.shadowColor = "#ff8c1a";
+  ctx.shadowBlur = 18 * flicker;
+  ctx.fillStyle = `rgba(255,${Math.floor(120 + 80 * flicker)},26,${0.6 + 0.4 * flicker})`;
+  ctx.fillRect(fX + 14, fY + fH - 46, fW - 28, 32);
+  ctx.restore();
+  // smoke particles
+  for (let i = 0; i < 4; i++) {
+    const phase = (t / 900 + i / 4) % 1;
+    const px = fX + fW / 2 + Math.sin(t / 500 + i * 2) * 10;
+    const py = fY - phase * 60;
+    ctx.fillStyle = `rgba(120,120,130,${0.4 * (1 - phase)})`;
+    ctx.fillRect(px, py, 6, 6);
+  }
+  ctx.restore();
+}
+
+function drawTreasury(ctx, room, t) {
+  ctx.save();
+  const cx = room.x + room.w / 2, cy = room.y + 74;
+  // vault door
+  ctx.save();
+  ctx.shadowColor = "#ffd23d";
+  ctx.shadowBlur = 10;
+  ctx.strokeStyle = "#ffd23d";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 40, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.lineWidth = 1.5;
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + t / 4000;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + Math.cos(a) * 34, cy + Math.sin(a) * 34);
+    ctx.stroke();
+  }
+  ctx.fillStyle = "#b537f2";
+  ctx.beginPath();
+  ctx.arc(cx, cy, 7, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // coin piles
+  const piles = [{ x: room.x + 60, y: room.y + room.h - 46 }, { x: room.x + room.w - 90, y: room.y + room.h - 40 }, { x: cx - 20, y: room.y + room.h - 30 }];
+  piles.forEach((pl, pi) => {
+    for (let i = 0; i < 6; i++) {
+      const cxo = pl.x + (i % 3) * 9;
+      const cyo = pl.y - Math.floor(i / 3) * 7;
+      const glint = 0.4 + 0.6 * Math.abs(Math.sin(t / 500 + pi + i));
+      ctx.fillStyle = `rgba(255,210,61,${0.5 + glint * 0.5})`;
+      ctx.fillRect(cxo, cyo, 10, 6);
+      ctx.strokeStyle = "#7a5b0a";
+      ctx.strokeRect(cxo, cyo, 10, 6);
+    }
+  });
+  ctx.restore();
+}
+
+function drawRadar(ctx, room, t) {
+  ctx.save();
+  const cx = room.x + room.w / 2, cy = room.y + room.h / 2 + 6;
+  const R = 92;
+  for (let i = 1; i <= 3; i++) {
+    ctx.beginPath();
+    ctx.strokeStyle = "rgba(181,55,242,0.35)";
+    ctx.lineWidth = 1;
+    ctx.arc(cx, cy, (R / 3) * i, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.beginPath();
+  ctx.strokeStyle = "rgba(181,55,242,0.25)";
+  ctx.moveTo(cx - R, cy); ctx.lineTo(cx + R, cy);
+  ctx.moveTo(cx, cy - R); ctx.lineTo(cx, cy + R);
+  ctx.stroke();
+
+  // sweep
+  const angle = (t / 1400) % (Math.PI * 2);
+  const grad = ctx.createConicGradient ? null : null;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+  const sweepGrad = ctx.createLinearGradient(0, 0, R, 0);
+  sweepGrad.addColorStop(0, "rgba(181,55,242,0.55)");
+  sweepGrad.addColorStop(1, "rgba(181,55,242,0)");
+  ctx.fillStyle = sweepGrad;
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.arc(0, 0, R, -0.28, 0.28);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  // blips
+  const blips = [{ a: 0.6, r: 0.5 }, { a: 2.1, r: 0.75 }, { a: 4.0, r: 0.35 }, { a: 5.1, r: 0.85 }];
+  blips.forEach((b, i) => {
+    const pulse = 0.4 + 0.6 * Math.abs(Math.sin(t / 600 + i * 1.7));
+    const bx = cx + Math.cos(b.a) * R * b.r;
+    const by = cy + Math.sin(b.a) * R * b.r;
+    ctx.fillStyle = `rgba(57,198,255,${pulse})`;
+    ctx.beginPath();
+    ctx.arc(bx, by, 3, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.restore();
+}
+
+const ROOM_DECOR = { bridge: drawBridge, workshop: drawWorkshop, treasury: drawTreasury, radar: drawRadar };
+const ROOM_FLOOR = {
+  bridge:   ["#0c1220", "#0f1626"],
+  workshop: ["#1a120c", "#1e150f"],
+  treasury: ["#181206", "#1c1608"],
+  radar:    ["#120c1a", "#160f1f"],
+};
+
+function drawRoom(ctx, room, t) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(room.x, room.y, room.w, room.h);
+  ctx.clip();
+  const [a, b] = ROOM_FLOOR[room.type];
+  drawTiledFloor(ctx, room, a, b);
+  ROOM_DECOR[room.type](ctx, room, t);
+
+  if (room.status === "alert") {
+    const a2 = 0.15 + 0.15 * Math.abs(Math.sin(t / 220));
+    ctx.fillStyle = `rgba(255,61,93,${a2})`;
+    ctx.fillRect(room.x, room.y, room.w, room.h);
+  } else if (room.status === "offline") {
+    ctx.fillStyle = "rgba(5,6,10,0.65)";
+    ctx.fillRect(room.x, room.y, room.w, room.h);
+  }
+  ctx.restore();
+
+  drawRoomFrame(ctx, room);
+
+  if (room.status === "offline") {
+    ctx.save();
+    ctx.fillStyle = "#55607a";
+    ctx.font = "bold 11px ui-monospace, monospace";
+    ctx.fillText("‖ OFFLINE ‖", room.x + room.w / 2 - 30, room.y + room.h / 2);
+    ctx.restore();
+  }
+}
+
+function drawAgent(ctx, agent, t) {
+  const bob = (agent.status === "paused" || agent.status === "error") ? Math.sin(t / 500 + agent.bob) * 0.6 : Math.sin(t / 260 + agent.bob) * 1.6;
+  const x = agent.x, y = agent.y + bob;
+  const sc = STATUS_COLOR[agent.status];
+
+  // shadow
+  ctx.save();
+  ctx.fillStyle = "rgba(0,0,0,0.45)";
+  ctx.beginPath();
+  ctx.ellipse(x, y + 15, 9, 3.2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // status ring
+  ctx.save();
+  ctx.strokeStyle = sc;
+  ctx.globalAlpha = 0.75;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(x, y + 15, 11, 4, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  // body (blocky sprite)
+  ctx.save();
+  ctx.fillStyle = "#161b28";
+  ctx.strokeStyle = agent.color;
+  ctx.lineWidth = 1.5;
+  roundRectPath(ctx, x - 6, y - 2, 12, 14, 2);
+  ctx.fill(); ctx.stroke();
+  // head
+  ctx.fillStyle = "#1e2434";
+  roundRectPath(ctx, x - 5, y - 14, 10, 10, 2);
+  ctx.fill(); ctx.stroke();
+  // eye / core light
+  ctx.fillStyle = agent.status === "error" ? "#ff3d5d" : agent.color;
+  ctx.shadowColor = ctx.fillStyle;
+  ctx.shadowBlur = 5;
+  ctx.fillRect(x - 2, y - 10, 4, 3);
+  ctx.shadowBlur = 0;
+  // antenna
+  ctx.strokeStyle = agent.color;
+  ctx.beginPath();
+  ctx.moveTo(x, y - 14);
+  ctx.lineTo(x, y - 18);
+  ctx.stroke();
+  const blinkOn = Math.sin(t / 260 + agent.bob) > 0;
+  ctx.fillStyle = blinkOn ? sc : "rgba(255,255,255,0.15)";
+  ctx.beginPath();
+  ctx.arc(x, y - 19, 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // status icon badge (error / paused)
+  if (agent.status === "error") {
+    ctx.save();
+    ctx.fillStyle = "#ff3d5d";
+    ctx.font = "bold 10px ui-monospace, monospace";
+    ctx.fillText("!", x + 8, y - 12);
+    ctx.restore();
+  } else if (agent.status === "paused") {
+    ctx.save();
+    ctx.strokeStyle = "#39c6ff";
+    ctx.beginPath();
+    ctx.arc(x + 10, y - 10, 4, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + 10, y - 10);
+    ctx.lineTo(x + 10, y - 13);
+    ctx.moveTo(x + 10, y - 10);
+    ctx.lineTo(x + 12.5, y - 10);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // name + badge above
+  const label = agent.status === "paused"
+    ? `PAUSED (RATE LIMIT — ${fmtCountdown(agent.rateLimitRemaining).toUpperCase()})`
+    : (agent.task || "").toUpperCase();
+  const nameLabel = agent.name;
+  ctx.save();
+  ctx.font = "bold 9px ui-monospace, monospace";
+  const full = label.length > 34 ? label.slice(0, 33) + "…" : label;
+  const textW = Math.max(ctx.measureText(full).width, ctx.measureText(nameLabel).width);
+  const bw = textW + 14, bh = 24;
+  const bx = x - bw / 2, by = y - 44;
+  ctx.fillStyle = "rgba(5,6,10,0.82)";
+  roundRectPath(ctx, bx, by, bw, bh, 3);
+  ctx.fill();
+  ctx.strokeStyle = sc;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  // status dot
+  ctx.fillStyle = sc;
+  ctx.beginPath();
+  ctx.arc(bx + 8, by + 8, 2.4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#e6e9f0";
+  ctx.font = "bold 9px ui-monospace, monospace";
+  ctx.fillText(nameLabel, bx + 14, by + 11);
+  ctx.fillStyle = "#9aa4bd";
+  ctx.font = "8px ui-monospace, monospace";
+  ctx.fillText(full, bx + 7, by + 19);
+  // connector line
+  ctx.strokeStyle = sc;
+  ctx.globalAlpha = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(x, by + bh);
+  ctx.lineTo(x, y - 18);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawCorridors(ctx) {
+  ctx.save();
+  ctx.strokeStyle = "#161c2a";
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.strokeRect(0.5, 0.5, CANVAS_W - 1, CANVAS_H - 1);
+  ctx.restore();
+}
+
+function draw(ctx, world, t) {
+  ctx.fillStyle = "#05060a";
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  drawCorridors(ctx);
+  world.rooms.forEach((room) => drawRoom(ctx, room, t));
+  const sorted = [...world.agents].sort((a, b) => a.y - b.y);
+  sorted.forEach((agent) => drawAgent(ctx, agent, t));
+}
+
+/* ---------------------------------------------------------------------- */
+/* Physics                                                                  */
+/* ---------------------------------------------------------------------- */
+
+function stepAgent(agent, room, now, dt, roommates) {
+  if (agent.status === "paused" || agent.status === "error") return;
+  const dx = agent.target.x - agent.x, dy = agent.target.y - agent.y;
+  const dist = Math.hypot(dx, dy);
+  const speed = 32; // px / sec
+  if (dist > 1.5) {
+    const step = Math.min(dist, (speed * dt) / 1000);
+    agent.x += (dx / dist) * step;
+    agent.y += (dy / dist) * step;
+  } else if (now > agent.waitUntil) {
+    agent.target = pickWaypoint(room, roommates);
+    agent.waitUntil = now + rand(2500, 6000);
+  }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Canvas World component                                                   */
+/* ---------------------------------------------------------------------- */
+
+function CanvasWorld({ worldRef }) {
+  const canvasRef = useRef(null);
+  const rafRef = useRef(null);
+  const lastRef = useRef(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = CANVAS_W * dpr;
+    canvas.height = CANVAS_H * dpr;
+    const ctx = canvas.getContext("2d");
+    ctx.scale(dpr, dpr);
+    ctx.imageSmoothingEnabled = false;
+
+    function loop(time) {
+      if (lastRef.current == null) lastRef.current = time;
+      const dt = time - lastRef.current;
+      lastRef.current = time;
+      const world = worldRef.current;
+      world.agents.forEach((agent) => {
+        const room = world.rooms.find((r) => r.id === agent.room);
+        if (room) {
+          const roommates = world.agents.filter((o) => o !== agent && o.room === agent.room);
+          stepAgent(agent, room, time, dt, roommates);
+        }
+      });
+      draw(ctx, world, time);
+      rafRef.current = requestAnimationFrame(loop);
+    }
+    rafRef.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [worldRef]);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{ width: "100%", height: "auto", aspectRatio: `${CANVAS_W} / ${CANVAS_H}` }}
+      className="pixelated block rounded border border-slate-800 shadow-[0_0_40px_rgba(57,255,136,0.05)]"
+    />
+  );
+}
+
+/* ---------------------------------------------------------------------- */
+/* Sidebar: Feed                                                            */
+/* ---------------------------------------------------------------------- */
+
+const KIND_META = {
+  info:     { color: "#39c6ff", label: "INFO" },
+  success:  { color: "#39ff88", label: "DONE" },
+  warn:     { color: "#ffd23d", label: "WARN" },
+  error:    { color: "#ff3d5d", label: "ERROR" },
+  plan:     { color: "#b537f2", label: "PLAN" },
+  approval: { color: "#ff5da2", label: "APPROVAL" },
+};
+
+function LogEntry({ entry, onResolve }) {
+  const meta = KIND_META[entry.kind] || KIND_META.info;
+  const isApproval = entry.kind === "approval" && entry.resolved === null;
+  return (
+    <div
+      className={`border rounded px-2.5 py-2 text-[11px] leading-relaxed bg-[#0b0e16] ${isApproval ? "approval-card" : ""}`}
+      style={{ borderColor: meta.color + "55" }}
+    >
+      <div className="flex items-center justify-between mb-1">
+        <div className="flex items-center gap-1.5">
+          <span className="inline-block w-2 h-2 rotate-45" style={{ background: meta.color }} />
+          <span className="font-bold" style={{ color: meta.color }}>{meta.label}</span>
+          <span className="text-slate-400">· {entry.agent}</span>
+        </div>
+        <span className="text-slate-500">{fmtClock(new Date(entry.ts))}</span>
+      </div>
+      <div className="text-slate-300">{entry.text}</div>
+      {entry.kind === "approval" && (
+        <div className="mt-1.5">
+          {entry.resolved === null ? (
+            <div className="flex gap-2">
+              <button
+                onClick={() => onResolve(entry.id, true)}
+                className="btn-pixel px-2 py-1 text-[10px] font-bold text-[#39ff88] flex-1"
+              >
+                ✓ APPROVE
+              </button>
+              <button
+                onClick={() => onResolve(entry.id, false)}
+                className="btn-pixel px-2 py-1 text-[10px] font-bold text-[#ff3d5d] flex-1"
+              >
+                ✕ REJECT
+              </button>
+            </div>
+          ) : (
+            <div
+              className="text-[10px] font-bold px-2 py-1 rounded inline-block"
+              style={{
+                color: entry.resolved ? "#39ff88" : "#ff3d5d",
+                background: entry.resolved ? "#39ff8818" : "#ff3d5d18",
+              }}
+            >
+              {entry.resolved ? "✓ APPROVED" : "✕ REJECTED"}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------- */
+/* Sidebar: Roster                                                          */
+/* ---------------------------------------------------------------------- */
+
+function RosterRow({ agent, onToggleAutonomy }) {
+  const sc = STATUS_COLOR[agent.status];
+  const room = ROOM_DEFS.find((r) => r.id === agent.room);
+  return (
+    <div className="flex items-center gap-2 px-2 py-1.5 border-b border-slate-800/70">
+      <span className="w-2 h-2 rounded-full pulse-dot flex-shrink-0" style={{ background: sc, color: sc }} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-1.5">
+          <span className="font-bold text-[11px]" style={{ color: agent.color }}>{agent.name}</span>
+          <span className="text-[9px] text-slate-500">{room ? room.name : ""}</span>
+        </div>
+        <div className="text-[10px] text-slate-400 truncate">
+          {agent.status === "paused"
+            ? `Rate limit — resuming ${fmtCountdown(agent.rateLimitRemaining)}`
+            : (agent.task || STATUS_LABEL[agent.status])}
+        </div>
+      </div>
+      <span
+        className="text-[9px] font-bold px-1.5 py-0.5 rounded flex-shrink-0"
+        style={{ color: sc, background: sc + "1a", border: `1px solid ${sc}55` }}
+      >
+        {STATUS_LABEL[agent.status]}
+      </span>
+      <input
+        type="checkbox"
+        className="toggle"
+        checked={agent.autonomous}
+        onChange={() => onToggleAutonomy(agent.id)}
+        title="Toggle autonomous mode"
+      />
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------------------- */
+/* App                                                                       */
+/* ---------------------------------------------------------------------- */
+
+function App() {
+  const worldRef = useRef(makeWorld());
+  const [, forceRender] = useState(0);
+  const bump = useCallback(() => forceRender((n) => n + 1), []);
+
+  const [logs, setLogs] = useState(seedLogs());
+  const [clock, setClock] = useState(new Date());
+  const [autoSim, setAutoSim] = useState(true);
+  const feedRef = useRef(null);
+
+  const pushLog = useCallback((entry) => {
+    setLogs((prev) => [{ id: LOG_ID++, ts: Date.now(), resolved: entry.kind === "approval" ? null : undefined, ...entry }, ...prev].slice(0, 60));
+  }, []);
+
+  const setAgentStatus = useCallback((agent, status, task) => {
+    agent.status = status;
+    agent.task = task || "";
+    if (status === "paused") {
+      agent.rateLimitRemaining = rand(SIM_HOUR_MS * 1, SIM_HOUR_MS * 3);
+    }
+  }, []);
+
+  /* live clock */
+  useEffect(() => {
+    const id = setInterval(() => setClock(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  /* rate-limit countdown ticker */
+  useEffect(() => {
+    const id = setInterval(() => {
+      const world = worldRef.current;
+      let changed = false;
+      world.agents.forEach((agent) => {
+        if (agent.status === "paused") {
+          agent.rateLimitRemaining -= 1000;
+          if (agent.rateLimitRemaining <= 0) {
+            agent.status = "idle";
+            agent.task = pick(IDLE_TASKS);
+            changed = true;
+            pushLog({ kind: "success", agent: agent.name, text: "Rate limit lifted — resuming autonomous operation" });
+          }
+        }
+      });
+      if (changed) bump();
+      else bump();
+    }, 1000);
+    return () => clearInterval(id);
+  }, [pushLog, bump]);
+
+  /* autonomous brain */
+  useEffect(() => {
+    if (!autoSim) return;
+    const id = setInterval(() => {
+      const world = worldRef.current;
+      const eligible = world.agents.filter((a) => a.autonomous && a.status !== "paused");
+      if (eligible.length === 0) return;
+      const agent = pick(eligible);
+      const roll = Math.random();
+
+      if (roll < 0.5) {
+        const task = pick(WORKING_TASKS);
+        setAgentStatus(agent, "working", task);
+        pushLog({ kind: "info", agent: agent.name, text: `Started task: ${task}` });
+      } else if (roll < 0.66) {
+        setAgentStatus(agent, "idle", pick(IDLE_TASKS));
+        pushLog({ kind: "success", agent: agent.name, text: `Completed task: ${agent.task || "current objective"}` });
+      } else if (roll < 0.78) {
+        setAgentStatus(agent, "paused");
+        pushLog({ kind: "warn", agent: agent.name, text: "Hit API rate limit — backing off and pausing" });
+      } else if (roll < 0.88) {
+        setAgentStatus(agent, "error", pick(ERROR_TASKS));
+        pushLog({ kind: "error", agent: agent.name, text: `Encountered an error: ${pick(ERROR_MSGS)}` });
+      } else if (roll < 0.95) {
+        pushLog({ kind: "plan", agent: agent.name, text: `Proposed a new business plan: "${pick(PLAN_NAMES)}"` });
+      } else {
+        pushLog({
+          kind: "approval", agent: agent.name,
+          text: `Requests approval to ${pick(APPROVAL_ACTIONS)}`,
+          resolved: null, relatedAgent: agent.id,
+        });
+      }
+      bump();
+    }, 3200);
+    return () => clearInterval(id);
+  }, [autoSim, pushLog, setAgentStatus, bump]);
+
+  /* auto-scroll feed on new entries */
+  useEffect(() => {
+    if (feedRef.current) feedRef.current.scrollTop = 0;
+  }, [logs.length]);
+
+  const handleResolve = useCallback((logId, approved) => {
+    setLogs((prev) => prev.map((l) => (l.id === logId ? { ...l, resolved: approved } : l)));
+    const entry = logs.find((l) => l.id === logId);
+    if (entry && entry.relatedAgent) {
+      const agent = worldRef.current.agents.find((a) => a.id === entry.relatedAgent);
+      if (agent) {
+        if (approved) {
+          setAgentStatus(agent, "working", "Executing approved action");
+          pushLog({ kind: "success", agent: agent.name, text: "Approval granted — executing action" });
+        } else {
+          setAgentStatus(agent, "idle", pick(IDLE_TASKS));
+          pushLog({ kind: "warn", agent: agent.name, text: "Approval rejected — standing down" });
+        }
+        bump();
+      }
+    }
+  }, [logs, pushLog, setAgentStatus, bump]);
+
+  const handleToggleAutonomy = useCallback((agentId) => {
+    const agent = worldRef.current.agents.find((a) => a.id === agentId);
+    if (agent) {
+      agent.autonomous = !agent.autonomous;
+      pushLog({ kind: "info", agent: agent.name, text: agent.autonomous ? "Autonomous mode enabled" : "Autonomous mode disabled — manual control only" });
+      bump();
+    }
+  }, [pushLog, bump]);
+
+  /* ---- simulate console actions ---- */
+  const simRandomAction = useCallback(() => {
+    const world = worldRef.current;
+    const agent = pick(world.agents);
+    const task = pick(WORKING_TASKS);
+    setAgentStatus(agent, "working", task);
+    pushLog({ kind: "info", agent: agent.name, text: `Started task: ${task}` });
+    bump();
+  }, [pushLog, setAgentStatus, bump]);
+
+  const simRateLimit = useCallback(() => {
+    const world = worldRef.current;
+    const candidates = world.agents.filter((a) => a.status !== "paused");
+    if (!candidates.length) return;
+    const agent = pick(candidates);
+    setAgentStatus(agent, "paused");
+    pushLog({ kind: "warn", agent: agent.name, text: "Hit API rate limit — backing off and pausing" });
+    bump();
+  }, [pushLog, setAgentStatus, bump]);
+
+  const simError = useCallback(() => {
+    const world = worldRef.current;
+    const agent = pick(world.agents);
+    setAgentStatus(agent, "error", pick(ERROR_TASKS));
+    pushLog({ kind: "error", agent: agent.name, text: `Encountered an error: ${pick(ERROR_MSGS)}` });
+    const room = world.rooms.find((r) => r.id === agent.room);
+    if (room) room.status = "alert";
+    setTimeout(() => { room.status = "normal"; }, 4000);
+    bump();
+  }, [pushLog, setAgentStatus, bump]);
+
+  const simApproval = useCallback(() => {
+    const world = worldRef.current;
+    const agent = pick(world.agents);
+    pushLog({
+      kind: "approval", agent: agent.name,
+      text: `Requests approval to ${pick(APPROVAL_ACTIONS)}`,
+      resolved: null, relatedAgent: agent.id,
+    });
+  }, [pushLog]);
+
+  const simReassign = useCallback(() => {
+    const world = worldRef.current;
+    const agent = pick(world.agents);
+    const otherRooms = world.rooms.filter((r) => r.id !== agent.room);
+    const newRoom = pick(otherRooms);
+    const oldRoomName = world.rooms.find((r) => r.id === agent.room).name;
+    agent.room = newRoom.id;
+    const roommates = world.agents.filter((o) => o !== agent && o.room === newRoom.id);
+    const p = pickWaypoint(newRoom, roommates);
+    agent.x = p.x; agent.y = p.y; agent.target = p;
+    setAgentStatus(agent, "working", pick(WORKING_TASKS));
+    pushLog({ kind: "info", agent: agent.name, text: `Redeployed from ${oldRoomName} to ${newRoom.name}` });
+    bump();
+  }, [pushLog, setAgentStatus, bump]);
+
+  const world = worldRef.current;
+  const pendingApprovals = logs.filter((l) => l.kind === "approval" && l.resolved === null).length;
+
+  return (
+    <div className="min-h-screen w-full bg-[#05060a] text-slate-200 px-font">
+      {/* header */}
+      <header className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-[#0b0e16]">
+        <div className="flex items-center gap-3">
+          <div className="w-2.5 h-2.5 bg-[#39ff88] pulse-dot" style={{ color: "#39ff88" }} />
+          <h1 className="text-sm sm:text-base font-bold tracking-wider">
+            ◤ AGENT ECOSYSTEM <span className="text-slate-500">//</span> OPS DECK ◢
+          </h1>
+        </div>
+        <div className="flex items-center gap-4 text-[11px] text-slate-400">
+          {pendingApprovals > 0 && (
+            <span className="px-2 py-1 rounded bg-[#ff5da21a] text-[#ff5da2] font-bold border border-[#ff5da255]">
+              {pendingApprovals} PENDING APPROVAL{pendingApprovals > 1 ? "S" : ""}
+            </span>
+          )}
+          <label className="flex items-center gap-2 cursor-pointer">
+            <span className="font-bold text-slate-300">AUTO-SIM</span>
+            <input type="checkbox" className="toggle" checked={autoSim} onChange={() => setAutoSim((v) => !v)} />
+          </label>
+          <span className="font-mono">{fmtClock(clock)}</span>
+        </div>
+      </header>
+
+      <div className="flex flex-col lg:flex-row gap-4 p-4">
+        {/* main world */}
+        <div className="flex-1 min-w-0">
+          <CanvasWorld worldRef={worldRef} />
+
+          {/* legend */}
+          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-[10px] text-slate-400 bg-[#0b0e16] border border-slate-800 rounded px-3 py-2">
+            <span className="font-bold text-slate-300">STATUS:</span>
+            {Object.entries(STATUS_LABEL).map(([k, v]) => (
+              <span key={k} className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full" style={{ background: STATUS_COLOR[k] }} />
+                {v}
+              </span>
+            ))}
+            <span className="mx-2 text-slate-700">|</span>
+            <span className="font-bold text-slate-300">ROOMS:</span>
+            {ROOM_DEFS.map((r) => (
+              <span key={r.id} className="flex items-center gap-1.5">
+                <span className="w-2 h-2" style={{ background: r.glow }} />
+                {r.name}
+              </span>
+            ))}
+          </div>
+
+          {/* simulate console */}
+          <div className="mt-3 bg-[#0b0e16] border border-slate-800 rounded p-3">
+            <div className="text-[11px] font-bold text-slate-300 mb-2">SIMULATION CONSOLE</div>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={simRandomAction} className="btn-pixel px-3 py-1.5 text-[11px] rounded text-[#39ff88]">▶ Simulate Task Action</button>
+              <button onClick={simRateLimit} className="btn-pixel px-3 py-1.5 text-[11px] rounded text-[#39c6ff]">⏸ Force Rate-Limit Pause</button>
+              <button onClick={simError} className="btn-pixel px-3 py-1.5 text-[11px] rounded text-[#ff3d5d]">⚠ Trigger Error Alert</button>
+              <button onClick={simApproval} className="btn-pixel px-3 py-1.5 text-[11px] rounded text-[#ff5da2]">🔔 Request Approval</button>
+              <button onClick={simReassign} className="btn-pixel px-3 py-1.5 text-[11px] rounded text-[#ffd23d]">⇄ Reassign Agent Room</button>
+            </div>
+          </div>
+        </div>
+
+        {/* sidebar */}
+        <div className="w-full lg:w-[360px] flex-shrink-0 flex flex-col gap-4">
+          {/* feed */}
+          <div className="bg-[#0b0e16] border border-slate-800 rounded flex flex-col" style={{ height: 360 }}>
+            <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between">
+              <span className="text-[11px] font-bold text-slate-300">◈ COMMS FEED</span>
+              <span className="text-[9px] text-slate-500">{logs.length} EVENTS</span>
+            </div>
+            <div ref={feedRef} className="flex-1 overflow-y-auto p-2 flex flex-col gap-2">
+              {logs.map((entry) => (
+                <LogEntry key={entry.id} entry={entry} onResolve={handleResolve} />
+              ))}
+            </div>
+          </div>
+
+          {/* roster */}
+          <div className="bg-[#0b0e16] border border-slate-800 rounded flex flex-col">
+            <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between">
+              <span className="text-[11px] font-bold text-slate-300">◈ AGENT ROSTER</span>
+              <span className="text-[9px] text-slate-500">{world.agents.length} UNITS</span>
+            </div>
+            <div>
+              {world.agents.map((agent) => (
+                <RosterRow key={agent.id} agent={agent} onToggleAutonomy={handleToggleAutonomy} />
+              ))}
+            </div>
+          </div>
+
+          <div className="text-[9px] text-slate-600 leading-relaxed px-1">
+            Prototype UI — all agents, tasks and events are client-side simulated. No external data or API calls are made.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
