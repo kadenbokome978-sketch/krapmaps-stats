@@ -151,8 +151,8 @@
      spoke is left as a sealed/unused wing rather than forced symmetry. */
   #rooms{
     display:grid;
-    grid-template-columns: minmax(180px,1fr) 42px minmax(180px,1fr) 42px minmax(180px,1fr);
-    grid-template-rows: minmax(150px,1fr) 42px minmax(150px,1fr) 42px minmax(150px,1fr);
+    grid-template-columns: minmax(180px,1fr) 96px minmax(180px,1fr) 96px minmax(180px,1fr);
+    grid-template-rows: minmax(150px,1fr) 96px minmax(150px,1fr) 96px minmax(150px,1fr);
     gap:0;
     padding:10px;
     min-height:0;
@@ -172,33 +172,54 @@
   #pathway-e{ grid-area: 3 / 4 / 4 / 5; }
   #pathway-w{ grid-area: 3 / 2 / 4 / 3; }
 
+  /* Walkway: dark grated floor with a glowing energy conduit running
+     down the center, like a lit corridor between station modules. */
   .pathway{
     position:relative;
-    background:#0a0d16;
+    background:#0d1119;
     overflow:hidden;
   }
-  .pathway.vert{ border-left:1px solid var(--panel-line); border-right:1px solid var(--panel-line); }
-  .pathway.horiz{ border-top:1px solid var(--panel-line); border-bottom:1px solid var(--panel-line); }
-  .pathway::before{
+  .pathway.vert{ border-left:2px solid var(--panel-line); border-right:2px solid var(--panel-line); }
+  .pathway.horiz{ border-top:2px solid var(--panel-line); border-bottom:2px solid var(--panel-line); }
+
+  .pathway::before{ /* grate/tread texture across the full walkway width */
     content:'';
     position:absolute; inset:0;
-    opacity:0.65;
+    opacity:0.5;
   }
   .pathway.vert::before{
-    background:repeating-linear-gradient(180deg, var(--pathcolor,var(--bridge)) 0 6px, transparent 6px 16px);
-    animation:pathFlowV 0.8s linear infinite;
+    background:repeating-linear-gradient(180deg, rgba(255,255,255,0.05) 0 2px, transparent 2px 22px);
   }
   .pathway.horiz::before{
-    background:repeating-linear-gradient(90deg, var(--pathcolor,var(--bridge)) 0 6px, transparent 6px 16px);
+    background:repeating-linear-gradient(90deg, rgba(255,255,255,0.05) 0 2px, transparent 2px 22px);
+  }
+
+  .pathway::after{ /* glowing conduit down the middle */
+    content:'';
+    position:absolute;
+    opacity:0.9;
+  }
+  .pathway.vert::after{
+    left:50%; top:0; bottom:0; width:12px; margin-left:-6px;
+    background:repeating-linear-gradient(180deg, var(--pathcolor,var(--bridge)) 0 8px, transparent 8px 20px);
+    box-shadow:0 0 12px var(--pathcolor,var(--bridge));
+    animation:pathFlowV 0.8s linear infinite;
+  }
+  .pathway.horiz::after{
+    top:50%; left:0; right:0; height:12px; margin-top:-6px;
+    background:repeating-linear-gradient(90deg, var(--pathcolor,var(--bridge)) 0 8px, transparent 8px 20px);
+    box-shadow:0 0 12px var(--pathcolor,var(--bridge));
     animation:pathFlowH 0.8s linear infinite;
   }
-  @keyframes pathFlowV{ 0%{background-position:0 0;} 100%{background-position:0 16px;} }
-  @keyframes pathFlowH{ 0%{background-position:0 0;} 100%{background-position:16px 0;} }
+  @keyframes pathFlowV{ 0%{background-position:0 0;} 100%{background-position:0 20px;} }
+  @keyframes pathFlowH{ 0%{background-position:0 0;} 100%{background-position:20px 0;} }
+
   .pathway.dead{ border-color:#1a1f2d; }
-  .pathway.dead::before{
+  .pathway.dead::after{
     animation:none;
     opacity:0.3;
-    background:repeating-linear-gradient(90deg, #3a4258 0 4px, transparent 4px 10px);
+    box-shadow:none;
+    background:repeating-linear-gradient(90deg, #3a4258 0 4px, transparent 4px 12px);
   }
   #pathway-n{ --pathcolor: var(--workshop); }
   #pathway-e{ --pathcolor: var(--treasury); }
