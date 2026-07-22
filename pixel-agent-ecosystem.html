@@ -1,0 +1,829 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AGENT ECOSYSTEM // COMMAND DECK</title>
+<style>
+  :root{
+    --tile-dark:#0b0e14;
+    --tile-darker:#080a10;
+    --bg:#05060a;
+    --panel:#070910;
+  }
+  *{ box-sizing:border-box; }
+  html,body{
+    margin:0; padding:0; min-height:100vh;
+    background:var(--bg);
+    color:#dfe7ef;
+    font-family:'Courier New', ui-monospace, SFMono-Regular, monospace;
+    -webkit-font-smoothing:none;
+  }
+  .pixel-font{
+    font-family: ui-monospace, 'Courier New', monospace;
+    letter-spacing:0.5px;
+    font-weight:700;
+    text-transform:uppercase;
+  }
+  * { image-rendering: pixelated; }
+  ::-webkit-scrollbar{ width:8px; height:8px; }
+  ::-webkit-scrollbar-track{ background:#0b0e14; }
+  ::-webkit-scrollbar-thumb{ background:#2a2f3a; }
+  ::-webkit-scrollbar-thumb:hover{ background:#3d4452; }
+
+  #app{ display:flex; flex-direction:column; min-height:100vh; }
+
+  header{
+    display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between;
+    gap:12px; padding:12px 16px; border-bottom:2px solid #39ff8866; background:var(--panel);
+  }
+  .brand{ display:flex; align-items:center; gap:12px; }
+  .brand-title{ color:#39ff88; font-size:14px; text-shadow:0 0 6px #39ff88, 0 0 14px #39ff88; }
+  .brand-sub{ color:#6b7280; font-size:13px; }
+  .blink{ animation: blink-caret 1s step-start infinite; }
+  @keyframes blink-caret{ 0%,49%{opacity:1;} 50%,100%{opacity:0;} }
+
+  .top-controls{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+
+  .chip{
+    display:flex; align-items:center; gap:6px; padding:5px 8px; border-radius:3px; border:1px solid;
+    font-size:11px; background:rgba(255,255,255,0.02);
+  }
+  .chip .dot{ width:6px; height:6px; border-radius:50%; }
+  .chip .val{ color:#dfe7ef; font-size:13px; }
+  .chip.pulse{ animation: chip-pulse 1.2s ease-in-out infinite; }
+  @keyframes chip-pulse{ 0%,100%{opacity:1;} 50%{opacity:0.55;} }
+
+  button.btn{
+    font-family: inherit; text-transform:uppercase; font-size:10px; font-weight:700;
+    padding:8px 12px; border-radius:3px; cursor:pointer; letter-spacing:0.5px;
+  }
+  .btn-primary{ background:rgba(57,255,136,0.12); border:1px solid #39ff88; color:#39ff88; }
+  .btn-primary:hover{ background:rgba(57,255,136,0.28); }
+  .btn-secondary{ background:rgba(255,255,255,0.05); border:1px solid #6b7280; color:#c7ccd4; }
+  .btn-secondary:hover{ background:rgba(255,255,255,0.12); }
+
+  main{ display:flex; flex:1; min-height:0; }
+  .rooms-grid{
+    flex:1; padding:16px; display:grid; grid-template-columns:1fr 1fr; gap:16px;
+    overflow-y:auto; align-content:start;
+  }
+  @media (max-width: 900px){ .rooms-grid{ grid-template-columns:1fr; } main{ flex-direction:column; } }
+
+  .room{
+    position:relative; overflow:hidden; border-radius:6px; border-width:2px; border-style:solid;
+    min-height:230px;
+    background-image:
+      linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px),
+      repeating-conic-gradient(var(--tile-dark) 0% 25%, var(--tile-darker) 0% 50%);
+    background-size: 16px 16px, 16px 16px, 32px 32px;
+  }
+  .scanlines{
+    position:absolute; inset:0; pointer-events:none;
+    background:repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(0,0,0,0.12) 3px, rgba(0,0,0,0.12) 3px);
+    mix-blend-mode:overlay;
+  }
+  .room-header{ display:flex; align-items:center; justify-content:space-between; padding:6px 12px; border-bottom:1px solid; position:relative; z-index:2; }
+  .room-title{ font-size:12px; text-shadow:0 0 6px currentColor, 0 0 14px currentColor; }
+  .room-sub{ color:#6b7280; font-size:12px; margin-top:-2px; }
+  .room-alert-badge{ font-size:9px; padding:2px 6px; border-radius:3px; border:1px solid; animation: chip-pulse 1s infinite; }
+  .room-stage{ position:relative; width:100%; height:180px; }
+
+  /* Bridge */
+  .bridge-beacons{ position:absolute; top:10px; left:10px; display:flex; gap:4px; z-index:1; }
+  .beacon{ width:8px; height:8px; border-radius:50%; animation: pulse-beacon 2.2s infinite ease-in-out; }
+  @keyframes pulse-beacon{
+    0%,100%{ box-shadow:0 0 6px 2px currentColor, 0 0 16px 4px currentColor; opacity:0.85; transform:scale(1); }
+    50%{ box-shadow:0 0 12px 5px currentColor, 0 0 26px 10px currentColor; opacity:1; transform:scale(1.1); }
+  }
+  .bridge-tag{ position:absolute; bottom:8px; right:10px; font-size:9px; color:#39ff8866; }
+
+  /* Workshop */
+  .furnace{
+    position:absolute; bottom:16px; left:16px; width:40px; height:40px; border-radius:4px;
+    border:1px solid #b8460088; background:#3a1200;
+    animation: furnace-core 1.6s infinite ease-in-out;
+  }
+  .furnace.overheat{ animation-duration:0.45s; }
+  @keyframes furnace-core{
+    0%,100%{ filter:brightness(1); box-shadow:0 0 18px 6px #ff6a00aa, inset 0 0 20px #ff2e0088; }
+    50%{ filter:brightness(1.35); box-shadow:0 0 30px 12px #ff8a00cc, inset 0 0 30px #ff4d0099; }
+  }
+  .smoke{ position:absolute; bottom:56px; left:26px; width:6px; height:6px; border-radius:50%; background:rgba(180,185,195,0.5); animation: smoke-rise 3.4s ease-out infinite; }
+  @keyframes smoke-rise{ 0%{ transform:translate(0,0) scale(0.6); opacity:0.55; } 100%{ transform:translate(var(--sx,6px),-70px) scale(1.6); opacity:0; } }
+  .waterfall{
+    position:absolute; top:0; right:16px; width:24px; height:100%; border-radius:0 0 6px 6px;
+    border-left:1px solid #22e3ff33; border-right:1px solid #22e3ff33;
+    background-image: repeating-linear-gradient(to bottom, #1ee7ff33 0px, #1ee7ff33 4px, #0891b299 4px, #0891b299 8px, #05384533 8px, #05384533 16px);
+    background-size:100% 64px;
+    animation: water-flow 1.1s linear infinite;
+  }
+  @keyframes water-flow{ 0%{ background-position-y:0; } 100%{ background-position-y:64px; } }
+  .splash{ position:absolute; bottom:10px; right:10px; width:4px; height:4px; border-radius:50%; background:#67e8f9; animation: splash-bounce 0.9s ease-in-out infinite; }
+  @keyframes splash-bounce{ 0%,100%{ transform:translateY(0); opacity:0.4; } 50%{ transform:translateY(-6px); opacity:1; } }
+
+  /* Treasury */
+  .beacon-orb{
+    position:absolute; top:50%; left:50%; width:34px; height:34px; margin:-17px 0 0 -17px; border-radius:50%;
+    background:#ffb020; color:#ffb020; opacity:0.85; animation: pulse-beacon 2.2s infinite ease-in-out;
+  }
+  .coin{
+    position:absolute; width:12px; height:12px; border-radius:50%;
+    background: radial-gradient(circle at 30% 30%, #fff3c4, #ffb020 60%, #a56a00);
+    box-shadow:0 0 6px #ffb02088; animation: coin-bob 2.4s ease-in-out infinite;
+  }
+  @keyframes coin-bob{ 0%,100%{ transform:translateY(0) rotate(0deg); } 50%{ transform:translateY(-8px) rotate(8deg); } }
+
+  /* Radar */
+  .radar-wrap{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; }
+  .radar-disc{ position:relative; width:110px; height:110px; border-radius:50%; border:1px solid #22e3ff55; background:radial-gradient(circle, #033a4622, transparent 70%); }
+  .radar-ring{ position:absolute; border-radius:50%; border:1px solid #22e3ff2e; }
+  .radar-sweep-wrap{ position:absolute; inset:0; animation: radar-sweep 3.5s linear infinite; }
+  @keyframes radar-sweep{ from{ transform:rotate(0deg);} to{ transform:rotate(360deg);} }
+  .radar-sweep-line{ position:absolute; top:50%; left:50%; width:50%; height:2px; transform-origin:left center; background:linear-gradient(to right, #22e3ffcc, transparent); }
+  .radar-blip{ position:absolute; width:6px; height:6px; border-radius:50%; background:#67e8f9; animation: blip-pulse 2.2s ease-out infinite; }
+  @keyframes blip-pulse{ 0%{ opacity:0; transform:scale(0.4);} 30%{ opacity:1; transform:scale(1.2);} 100%{ opacity:0; transform:scale(1.6);} }
+
+  /* Agents */
+  .agent{ position:absolute; display:flex; flex-direction:column; align-items:center; transform:translate(-50%,-50%); transition:left 0.4s linear, top 0.4s linear; z-index:3; }
+  .agent-badge{
+    margin-bottom:4px; padding:2px 6px; border-radius:3px; border:1px solid; font-size:9px;
+    background:rgba(6,8,14,0.88); white-space:nowrap; max-width:150px; overflow:hidden; text-overflow:ellipsis;
+    animation: badge-float 2.4s ease-in-out infinite;
+  }
+  @keyframes badge-float{ 0%,100%{ transform:translateY(0);} 50%{ transform:translateY(-3px);} }
+  .agent-name{ font-size:9px; margin-top:2px; }
+
+  /* Sidebar */
+  aside{ width:360px; flex-shrink:0; border-left:2px solid #1f2430; background:var(--panel); display:flex; flex-direction:column; min-height:0; }
+  @media (max-width: 900px){ aside{ width:100%; border-left:none; border-top:2px solid #1f2430; } }
+  .aside-header{ padding:8px 12px; border-bottom:1px solid #1f2430; font-size:11px; text-shadow:0 0 4px currentColor, 0 0 10px currentColor; }
+  #roster{ max-height:240px; overflow-y:auto; }
+  .roster-row{ display:flex; flex-direction:column; gap:4px; padding:6px 8px; border-bottom:1px solid #1f2430cc; }
+  .roster-top{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .roster-left{ display:flex; align-items:center; gap:6px; min-width:0; flex:1; }
+  .roster-dot{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+  .roster-name{ font-size:10px; flex-shrink:0; }
+  .roster-task{ color:#6b7280; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .toggle{ width:32px; height:16px; border-radius:8px; position:relative; cursor:pointer; flex-shrink:0; border:none; padding:0; transition:background-color .15s ease; }
+  .toggle .thumb{ position:absolute; top:2px; left:2px; width:12px; height:12px; border-radius:50%; background:#fff; transition:transform .15s ease; }
+  .rate-row{ display:flex; align-items:center; gap:8px; padding-left:14px; }
+  .rate-track{ flex:1; height:4px; background:#1f2430; border-radius:2px; overflow:hidden; }
+  .rate-fill{ height:100%; background:#ffb020; }
+  .rate-time{ font-size:11px; color:#ffb020; text-shadow:0 0 4px #ffb020; }
+
+  #logfeed{ flex:1; overflow-y:auto; padding:8px; min-height:200px; }
+  .log-entry{ padding:8px 10px; border-left:2px solid; margin-bottom:6px; background:rgba(255,255,255,0.03); border-radius:0 3px 3px 0; animation: log-enter 0.25s ease-out; }
+  @keyframes log-enter{ from{ opacity:0; transform:translateX(8px);} to{ opacity:1; transform:translateX(0);} }
+  .log-meta{ display:flex; align-items:center; justify-content:space-between; font-size:10px; color:#6b7280; margin-bottom:3px; }
+  .log-text{ font-size:13px; line-height:1.35; color:#dfe7ef; }
+  .log-actions{ display:flex; gap:6px; margin-top:6px; }
+  .log-actions button{ font-size:9px; padding:4px 8px; border-radius:3px; cursor:pointer; font-weight:700; }
+  .btn-approve{ background:rgba(16,185,129,0.18); border:1px solid #10b981; color:#6ee7b7; }
+  .btn-reject{ background:rgba(244,63,94,0.18); border:1px solid #f43f5e; color:#fda4af; }
+  .log-resolution{ font-size:10px; margin-top:4px; font-weight:700; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="brand">
+      <span class="brand-title pixel-font">AGENT ECOSYSTEM</span>
+      <span class="brand-sub">// COMMAND DECK <span class="blink">_</span></span>
+    </div>
+    <div class="top-controls">
+      <div class="chip" id="chip-working" style="border-color:#39ff8866;"><span class="dot" style="background:#39ff88;box-shadow:0 0 6px #39ff88;"></span><span class="pixel-font" style="color:#39ff88;font-size:9px;">WORKING</span><span class="val">0</span></div>
+      <div class="chip" id="chip-paused" style="border-color:#9aa5b566;"><span class="dot" style="background:#9aa5b5;box-shadow:0 0 6px #9aa5b5;"></span><span class="pixel-font" style="color:#9aa5b5;font-size:9px;">PAUSED</span><span class="val">0</span></div>
+      <div class="chip" id="chip-error" style="border-color:#ff5d7a66;"><span class="dot" style="background:#ff5d7a;box-shadow:0 0 6px #ff5d7a;"></span><span class="pixel-font" style="color:#ff5d7a;font-size:9px;">ERROR</span><span class="val">0</span></div>
+      <div class="chip" id="chip-pending" style="border-color:#b26bff66;"><span class="dot" style="background:#b26bff;box-shadow:0 0 6px #b26bff;"></span><span class="pixel-font" style="color:#b26bff;font-size:9px;">PENDING</span><span class="val">0</span></div>
+      <button class="btn btn-primary" id="btn-simulate">&#9889; Simulate Event</button>
+      <button class="btn btn-secondary" id="btn-toggle-all">&#9211; Toggle All Autonomy</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="rooms-grid" id="rooms-grid"></div>
+    <aside>
+      <div class="aside-header" style="color:#22e3ff;">FLEET ROSTER</div>
+      <div id="roster"></div>
+      <div class="aside-header" style="color:#b26bff; border-top:1px solid #1f2430;">COMMS // ALERT FEED</div>
+      <div id="logfeed"></div>
+    </aside>
+  </main>
+</div>
+
+<script>
+/* ---------------------------------------------------------------
+   CONFIG
+--------------------------------------------------------------- */
+const ROOMS = [
+  { id:'bridge',   name:'THE BRIDGE',  sub:'Command Center',  color:'#39ff88' },
+  { id:'workshop', name:'WORKSHOP',    sub:'Build & Forge',   color:'#b26bff' },
+  { id:'treasury', name:'TREASURY',    sub:'Revenue Vault',   color:'#ffb020' },
+  { id:'radar',    name:'RADAR',       sub:'Market Scanner',  color:'#22e3ff' },
+];
+
+const TASK_POOL = {
+  bridge:   ["Reviewing agent fleet status","Coordinating task queue","Drafting daily ops report","Watching alert thresholds","Syncing mission objectives"],
+  workshop: ["Designing Etsy listing","Refactoring build pipeline","Generating product mockups","Testing automation script","Assembling asset bundle"],
+  treasury: ["Reconciling ledger entries","Forecasting monthly revenue","Auditing API spend","Researching business idea","Optimizing pricing model"],
+  radar:    ["Scanning competitor listings","Tracking keyword trends","Monitoring social mentions","Researching business idea","Detecting market anomalies"],
+};
+
+const PROPOSALS = [
+  "Launch a limited-run pixel-art sticker pack on Etsy — est. $340/mo margin.",
+  "Reallocate 15% of ad budget from Meta to TikTok based on CTR trend.",
+  "Spin up a new SKU: glow-in-the-dark vinyl decals.",
+  "Pause underperforming Instagram automation and reinvest in newsletter growth.",
+  "Negotiate bulk supplier discount — projected 8% COGS reduction.",
+];
+
+const AGENT_NAMES = ["ARIA","KESTREL","NOVA","BYTE","ORION","VESTA"];
+const SPRITE_COLORS = ["#39ff88","#b26bff","#ffb020","#22e3ff","#ff5d7a","#f6f36b"];
+
+function randomTask(room){
+  const pool = TASK_POOL[room];
+  return pool[Math.floor(Math.random()*pool.length)];
+}
+
+function makeAgent(i, room){
+  return {
+    id:`agent-${i}`,
+    name: AGENT_NAMES[i % AGENT_NAMES.length],
+    color: SPRITE_COLORS[i % SPRITE_COLORS.length],
+    room,
+    status:'working',
+    task: randomTask(room),
+    autonomous:true,
+    rateLimitUntil:null,
+    rateLimitTotal:0,
+    pos:{ x: 20 + Math.random()*60, y: 25 + Math.random()*55 },
+    target:{ x: 20 + Math.random()*60, y: 25 + Math.random()*55 },
+    facing:1,
+  };
+}
+
+let logSeq = 1;
+function makeLog(type, agentName, text, needsApproval=false){
+  return { id: logSeq++, ts:new Date(), type, agentName, text, needsApproval, resolution:null };
+}
+
+function fmtCountdown(ms){
+  if(ms <= 0) return '0:00';
+  const s = Math.ceil(ms/1000);
+  const m = Math.floor(s/60);
+  const rem = s % 60;
+  return `${m}:${rem.toString().padStart(2,'0')}`;
+}
+
+/* ---------------------------------------------------------------
+   STATE
+--------------------------------------------------------------- */
+const state = {
+  agents: [
+    makeAgent(0,'bridge'),
+    makeAgent(1,'workshop'),
+    makeAgent(2,'treasury'),
+    makeAgent(3,'radar'),
+    makeAgent(4,'workshop'),
+    makeAgent(5,'bridge'),
+  ],
+  logs: [],
+  alertState:{ workshopOverheat:false, radarContact:false },
+};
+
+function pushLog(type, agentName, text, needsApproval=false){
+  const entry = makeLog(type, agentName, text, needsApproval);
+  state.logs.unshift(entry);
+  if(state.logs.length > 60) state.logs.pop();
+  renderLogFeed();
+  updateStatChips();
+  return entry;
+}
+
+/* ---------------------------------------------------------------
+   BUILD STATIC DOM (rooms, agent nodes, roster rows, decor)
+--------------------------------------------------------------- */
+const roomsGrid = document.getElementById('rooms-grid');
+const rosterEl = document.getElementById('roster');
+const logfeedEl = document.getElementById('logfeed');
+
+const agentNodes = {};   // id -> { el, canvas, ctx, badge, name }
+const roomStageEls = {}; // room id -> stage element
+const rosterRows = {};   // agent id -> { row, dot, task, toggle, thumb, rateRow, rateFill, rateTime }
+
+function buildRooms(){
+  ROOMS.forEach(room => {
+    const roomEl = document.createElement('div');
+    roomEl.className = 'room';
+    roomEl.style.borderColor = room.color;
+    roomEl.style.boxShadow = `0 0 12px ${room.color}55, inset 0 0 30px #00000088`;
+
+    const scan = document.createElement('div');
+    scan.className = 'scanlines';
+    roomEl.appendChild(scan);
+
+    const header = document.createElement('div');
+    header.className = 'room-header';
+    header.style.borderColor = room.color+'55';
+    header.innerHTML = `
+      <div>
+        <div class="room-title pixel-font" style="color:${room.color};">${room.name}</div>
+        <div class="room-sub">${room.sub}</div>
+      </div>
+      <div class="room-alert-badge pixel-font" id="alert-${room.id}" style="color:${room.color}; border-color:${room.color}; display:none;"></div>
+    `;
+    roomEl.appendChild(header);
+
+    const stage = document.createElement('div');
+    stage.className = 'room-stage';
+    stage.id = `stage-${room.id}`;
+    roomEl.appendChild(stage);
+    roomStageEls[room.id] = stage;
+
+    buildRoomDecor(room.id, stage);
+    roomsGrid.appendChild(roomEl);
+  });
+}
+
+function buildRoomDecor(roomId, stage){
+  if(roomId === 'bridge'){
+    const beacons = document.createElement('div');
+    beacons.className = 'bridge-beacons';
+    for(let i=0;i<4;i++){
+      const b = document.createElement('div');
+      b.className = 'beacon';
+      b.style.background = '#39ff88';
+      b.style.color = '#39ff88';
+      b.style.animationDelay = `${i*0.3}s`;
+      beacons.appendChild(b);
+    }
+    stage.appendChild(beacons);
+    const tag = document.createElement('div');
+    tag.className = 'bridge-tag';
+    tag.textContent = 'CMD-DECK';
+    stage.appendChild(tag);
+  }
+  if(roomId === 'workshop'){
+    const furnace = document.createElement('div');
+    furnace.className = 'furnace';
+    furnace.id = 'furnace-el';
+    stage.appendChild(furnace);
+    for(let i=0;i<4;i++){
+      const s = document.createElement('div');
+      s.className = 'smoke';
+      s.style.animationDelay = `${i*0.8}s`;
+      s.style.setProperty('--sx', `${(i-2)*4}px`);
+      stage.appendChild(s);
+    }
+    const waterfall = document.createElement('div');
+    waterfall.className = 'waterfall';
+    stage.appendChild(waterfall);
+    for(let i=0;i<3;i++){
+      const sp = document.createElement('div');
+      sp.className = 'splash';
+      sp.style.right = `${10 + i*6}px`;
+      sp.style.animationDelay = `${i*0.2}s`;
+      stage.appendChild(sp);
+    }
+  }
+  if(roomId === 'treasury'){
+    const orb = document.createElement('div');
+    orb.className = 'beacon-orb';
+    stage.appendChild(orb);
+    for(let i=0;i<3;i++){
+      const c = document.createElement('div');
+      c.className = 'coin';
+      c.style.top = `${20+i*18}%`;
+      c.style.left = `${65 + (i%2)*10}%`;
+      c.style.animationDelay = `${i*0.5}s`;
+      stage.appendChild(c);
+    }
+  }
+  if(roomId === 'radar'){
+    const wrap = document.createElement('div');
+    wrap.className = 'radar-wrap';
+    const disc = document.createElement('div');
+    disc.className = 'radar-disc';
+    const r1 = document.createElement('div');
+    r1.className = 'radar-ring';
+    r1.style.inset = '8px';
+    const r2 = document.createElement('div');
+    r2.className = 'radar-ring';
+    r2.style.inset = '24px';
+    const sweepWrap = document.createElement('div');
+    sweepWrap.className = 'radar-sweep-wrap';
+    const sweepLine = document.createElement('div');
+    sweepLine.className = 'radar-sweep-line';
+    sweepWrap.appendChild(sweepLine);
+    disc.appendChild(r1); disc.appendChild(r2); disc.appendChild(sweepWrap);
+    for(let i=0;i<4;i++){
+      const blip = document.createElement('div');
+      blip.className = 'radar-blip';
+      blip.style.top = `${10+Math.random()*80}%`;
+      blip.style.left = `${10+Math.random()*80}%`;
+      blip.style.animationDelay = `${Math.random()*2}s`;
+      disc.appendChild(blip);
+    }
+    wrap.appendChild(disc);
+    stage.appendChild(wrap);
+  }
+}
+
+/* ---------------------------------------------------------------
+   AGENT SPRITE (canvas pixel art)
+--------------------------------------------------------------- */
+const BODY_SHAPE = ["00111100","01111110","01011010","01111110","00111100","00111100","01111110","01111110","01111110","00000000"];
+const LEGS_A = ["00100100","00100100"];
+const LEGS_B = ["01000010","01000010"];
+const SCALE = 4;
+
+function buildAgentNode(agent){
+  const el = document.createElement('div');
+  el.className = 'agent';
+
+  const badge = document.createElement('div');
+  badge.className = 'agent-badge pixel-font';
+  el.appendChild(badge);
+
+  const canvas = document.createElement('canvas');
+  canvas.width = 8*SCALE;
+  canvas.height = 12*SCALE;
+  canvas.style.filter = 'drop-shadow(0 0 6px rgba(0,0,0,0.6))';
+  el.appendChild(canvas);
+
+  const nameEl = document.createElement('div');
+  nameEl.className = 'agent-name pixel-font';
+  nameEl.textContent = agent.name;
+  nameEl.style.color = agent.color;
+  el.appendChild(nameEl);
+
+  agentNodes[agent.id] = { el, canvas, ctx:canvas.getContext('2d'), badge, nameEl };
+  return el;
+}
+
+function buildAgents(){
+  state.agents.forEach(agent => {
+    const node = buildAgentNode(agent);
+    roomStageEls[agent.room].appendChild(node);
+  });
+}
+
+let globalFrame = 0;
+function drawSprite(agent){
+  const node = agentNodes[agent.id];
+  if(!node) return;
+  const ctx = node.ctx;
+  ctx.clearRect(0,0,node.canvas.width,node.canvas.height);
+
+  const walking = agent.status === 'working';
+  const legFrame = walking && Math.floor(globalFrame/8)%2===0 ? LEGS_A : LEGS_B;
+  const dim = agent.status === 'paused';
+  const errorFlicker = agent.status === 'error' && Math.floor(globalFrame/6)%2===0;
+  const bodyColor = errorFlicker ? '#ff3355' : (dim ? '#5a6270' : agent.color);
+
+  const rows = BODY_SHAPE.concat(legFrame);
+  rows.forEach((row,y) => {
+    for(let x=0;x<row.length;x++){
+      if(row[x] === '1'){
+        ctx.fillStyle = bodyColor;
+        const px = agent.facing < 0 ? (7-x) : x;
+        ctx.fillRect(px*SCALE, y*SCALE, SCALE, SCALE);
+      }
+    }
+  });
+
+  const lightColor = agent.status==='working' ? '#39ff88'
+    : agent.status==='paused' ? '#8ea0b8'
+    : agent.status==='error' ? '#ff3355'
+    : '#ffd23f';
+  ctx.fillStyle = lightColor;
+  ctx.fillRect(3*SCALE, 1*SCALE, SCALE, SCALE);
+}
+
+function updateAgentDOM(agent){
+  const node = agentNodes[agent.id];
+  if(!node) return;
+  node.el.style.left = agent.pos.x + '%';
+  node.el.style.top = agent.pos.y + '%';
+
+  const badgeText = (agent.status === 'paused' && agent.rateLimitUntil) ? '⏸ Rate Limit'
+    : agent.status === 'error' ? '⚠ Error'
+    : agent.task;
+  node.badge.textContent = badgeText;
+  const badgeColor = agent.status==='error' ? '#ff5d7a' : agent.status==='paused' ? '#9aa5b5' : '#e7f6ff';
+  const borderColor = agent.status==='error' ? '#ff5d7a88' : (agent.color+'88');
+  node.badge.style.color = badgeColor;
+  node.badge.style.borderColor = borderColor;
+}
+
+function spriteLoop(){
+  globalFrame++;
+  state.agents.forEach(drawSprite);
+  requestAnimationFrame(spriteLoop);
+}
+
+/* ---------------------------------------------------------------
+   ROSTER
+--------------------------------------------------------------- */
+function buildRoster(){
+  state.agents.forEach(agent => {
+    const row = document.createElement('div');
+    row.className = 'roster-row';
+
+    const top = document.createElement('div');
+    top.className = 'roster-top';
+
+    const left = document.createElement('div');
+    left.className = 'roster-left';
+    const dot = document.createElement('span');
+    dot.className = 'roster-dot';
+    const name = document.createElement('span');
+    name.className = 'roster-name pixel-font';
+    name.textContent = agent.name;
+    name.style.color = agent.color;
+    const task = document.createElement('span');
+    task.className = 'roster-task';
+    left.appendChild(dot); left.appendChild(name); left.appendChild(task);
+
+    const toggle = document.createElement('button');
+    toggle.className = 'toggle';
+    const thumb = document.createElement('span');
+    thumb.className = 'thumb';
+    toggle.appendChild(thumb);
+    toggle.addEventListener('click', () => toggleAutonomy(agent.id));
+
+    top.appendChild(left);
+    top.appendChild(toggle);
+    row.appendChild(top);
+
+    const rateRow = document.createElement('div');
+    rateRow.className = 'rate-row';
+    rateRow.style.display = 'none';
+    const rateTrack = document.createElement('div');
+    rateTrack.className = 'rate-track';
+    const rateFill = document.createElement('div');
+    rateFill.className = 'rate-fill';
+    rateTrack.appendChild(rateFill);
+    const rateTime = document.createElement('span');
+    rateTime.className = 'rate-time';
+    rateRow.appendChild(rateTrack);
+    rateRow.appendChild(rateTime);
+    row.appendChild(rateRow);
+
+    rosterRows[agent.id] = { row, dot, task, toggle, thumb, rateRow, rateFill, rateTime };
+    rosterEl.appendChild(row);
+  });
+}
+
+function updateRosterRow(agent, now){
+  const r = rosterRows[agent.id];
+  if(!r) return;
+  const statusColor = agent.status==='working' ? '#39ff88'
+    : agent.status==='paused' ? '#9aa5b5'
+    : agent.status==='error' ? '#ff5d7a'
+    : '#ffd23f';
+  r.dot.style.background = statusColor;
+  r.dot.style.boxShadow = `0 0 6px ${statusColor}`;
+  r.task.textContent = agent.task;
+  r.toggle.style.background = agent.autonomous ? '#1c6b43' : '#3a3f4a';
+  r.thumb.style.transform = agent.autonomous ? 'translateX(16px)' : 'translateX(0)';
+
+  const remaining = agent.rateLimitUntil ? agent.rateLimitUntil - now : 0;
+  if(agent.rateLimitUntil && remaining > 0){
+    r.rateRow.style.display = 'flex';
+    const pct = Math.max(0, Math.min(100, (remaining/agent.rateLimitTotal)*100));
+    r.rateFill.style.width = pct + '%';
+    r.rateTime.textContent = fmtCountdown(remaining);
+  } else {
+    r.rateRow.style.display = 'none';
+  }
+}
+
+/* ---------------------------------------------------------------
+   LOG FEED
+--------------------------------------------------------------- */
+const LOG_STYLES = {
+  info:     { border:'#22e3ff', icon:'ℹ' },
+  success:  { border:'#39ff88', icon:'✓' },
+  warning:  { border:'#ffb020', icon:'⏸' },
+  error:    { border:'#ff5d7a', icon:'⚠' },
+  proposal: { border:'#b26bff', icon:'★' },
+};
+
+function renderLogFeed(){
+  logfeedEl.innerHTML = '';
+  state.logs.forEach(entry => {
+    const style = LOG_STYLES[entry.type] || LOG_STYLES.info;
+    const div = document.createElement('div');
+    div.className = 'log-entry';
+    div.style.borderColor = style.border;
+
+    const meta = document.createElement('div');
+    meta.className = 'log-meta';
+    meta.innerHTML = `<span style="color:${style.border}">${style.icon} ${escapeHtml(entry.agentName)}</span><span>${entry.ts.toLocaleTimeString()}</span>`;
+    div.appendChild(meta);
+
+    const text = document.createElement('div');
+    text.className = 'log-text';
+    text.textContent = entry.text;
+    div.appendChild(text);
+
+    if(entry.needsApproval && !entry.resolution){
+      const actions = document.createElement('div');
+      actions.className = 'log-actions';
+      const approve = document.createElement('button');
+      approve.className = 'btn-approve';
+      approve.textContent = 'APPROVE';
+      approve.addEventListener('click', () => resolveLog(entry.id, 'approved'));
+      const reject = document.createElement('button');
+      reject.className = 'btn-reject';
+      reject.textContent = 'REJECT';
+      reject.addEventListener('click', () => resolveLog(entry.id, 'rejected'));
+      actions.appendChild(approve); actions.appendChild(reject);
+      div.appendChild(actions);
+    } else if(entry.resolution){
+      const res = document.createElement('div');
+      res.className = 'log-resolution pixel-font';
+      res.style.color = entry.resolution === 'approved' ? '#39ff88' : '#ff5d7a';
+      res.textContent = entry.resolution === 'approved' ? '✓ APPROVED' : '✕ REJECTED';
+      div.appendChild(res);
+    }
+
+    logfeedEl.appendChild(div);
+  });
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function resolveLog(id, resolution){
+  const entry = state.logs.find(l => l.id === id);
+  if(!entry) return;
+  entry.resolution = resolution;
+  pushLog(resolution==='approved' ? 'success' : 'warning', 'OPERATOR',
+    resolution==='approved' ? 'Proposal approved by human operator.' : 'Proposal rejected by human operator.');
+}
+
+/* ---------------------------------------------------------------
+   STAT CHIPS
+--------------------------------------------------------------- */
+function updateStatChips(){
+  const working = state.agents.filter(a=>a.status==='working').length;
+  const paused = state.agents.filter(a=>a.status==='paused').length;
+  const error = state.agents.filter(a=>a.status==='error').length;
+  const pending = state.logs.filter(l=>l.needsApproval && !l.resolution).length;
+
+  document.querySelector('#chip-working .val').textContent = working;
+  document.querySelector('#chip-paused .val').textContent = paused;
+  document.querySelector('#chip-error .val').textContent = error;
+  document.querySelector('#chip-pending .val').textContent = pending;
+  document.getElementById('chip-pending').classList.toggle('pulse', pending > 0);
+}
+
+/* ---------------------------------------------------------------
+   ACTIONS
+--------------------------------------------------------------- */
+function toggleAutonomy(agentId){
+  const agent = state.agents.find(a => a.id === agentId);
+  if(!agent) return;
+  agent.autonomous = !agent.autonomous;
+  agent.status = agent.autonomous ? 'working' : 'idle';
+  pushLog(agent.autonomous ? 'success':'warning', agent.name,
+    agent.autonomous ? 'Autonomy re-enabled by operator.' : 'Autonomy disabled — awaiting manual control.');
+  updateRosterRow(agent, Date.now());
+  updateAgentDOM(agent);
+}
+
+function toggleAllAutonomy(){
+  const anyOn = state.agents.some(a => a.autonomous);
+  const next = !anyOn;
+  state.agents.forEach(a => {
+    a.autonomous = next;
+    a.status = next ? 'working' : 'idle';
+    updateRosterRow(a, Date.now());
+    updateAgentDOM(a);
+  });
+  pushLog('info','SYSTEM', next ? 'Global autonomy ENABLED for all agents.' : 'Global autonomy DISABLED for all agents.');
+}
+
+function setRoomAlert(roomId, on, label){
+  const badge = document.getElementById(`alert-${roomId}`);
+  if(badge){
+    badge.style.display = on ? 'block' : 'none';
+    badge.textContent = label || '';
+  }
+  if(roomId === 'workshop'){
+    const furnace = document.getElementById('furnace-el');
+    if(furnace) furnace.classList.toggle('overheat', on);
+  }
+}
+
+function simulateEvent(){
+  const roll = Math.random();
+  const idx = Math.floor(Math.random()*state.agents.length);
+  const agent = state.agents[idx];
+  const now = Date.now();
+
+  if(roll < 0.25){
+    agent.status = 'working';
+    agent.task = randomTask(agent.room);
+    pushLog('info', agent.name, `Started new task in ${agent.room}.`);
+  } else if(roll < 0.45){
+    const durationMs = 20000 + Math.random()*40000;
+    agent.status = 'paused';
+    agent.rateLimitUntil = now + durationMs;
+    agent.rateLimitTotal = durationMs;
+    pushLog('warning', agent.name, `Hit API rate limit — pausing (resuming in ${fmtCountdown(durationMs)}).`);
+  } else if(roll < 0.6){
+    agent.status = 'error';
+    pushLog('error', agent.name, 'Unhandled exception during task execution. Awaiting recovery.');
+    setTimeout(() => {
+      agent.status = 'working';
+      agent.task = randomTask(agent.room);
+      pushLog('success', agent.name, 'Recovered from error — resuming task.');
+    }, 6000);
+  } else if(roll < 0.8){
+    const text = PROPOSALS[Math.floor(Math.random()*PROPOSALS.length)];
+    pushLog('proposal', agent.name, text, true);
+  } else {
+    const roomEvents = [
+      { key:'workshopOverheat', room:'workshop', label:'OVERHEAT', msg:'Workshop furnace temperature spike detected.' },
+      { key:'radarContact', room:'radar', label:'CONTACT', msg:'Radar contact detected in market scan.' },
+    ];
+    const ev = roomEvents[Math.floor(Math.random()*roomEvents.length)];
+    state.alertState[ev.key] = true;
+    setRoomAlert(ev.room, true, ev.label);
+    pushLog('warning','SYSTEM', ev.msg);
+    setTimeout(() => { state.alertState[ev.key] = false; setRoomAlert(ev.room, false); }, 5000);
+  }
+  updateAgentDOM(agent);
+  updateRosterRow(agent, now);
+  updateStatChips();
+}
+
+/* ---------------------------------------------------------------
+   TICK LOOPS
+--------------------------------------------------------------- */
+function clockTick(){
+  const now = Date.now();
+  state.agents.forEach(agent => {
+    if(agent.status==='paused' && agent.rateLimitUntil && now >= agent.rateLimitUntil){
+      pushLog('success', agent.name, 'Rate limit cleared — resuming autonomous work.');
+      agent.status = 'working';
+      agent.rateLimitUntil = null;
+      agent.task = randomTask(agent.room);
+      updateAgentDOM(agent);
+    }
+    updateRosterRow(agent, now);
+  });
+  updateStatChips();
+}
+
+function movementTick(){
+  state.agents.forEach(agent => {
+    if(agent.status !== 'working') return;
+    const { x, y } = agent.pos;
+    const { x: tx, y: ty } = agent.target;
+    const dx = tx - x, dy = ty - y;
+    const dist = Math.hypot(dx,dy);
+    if(dist < 2){
+      agent.target = { x: 15+Math.random()*70, y: 20+Math.random()*60 };
+      return;
+    }
+    const step = 1.2;
+    agent.pos = { x: x + (dx/dist)*step, y: y + (dy/dist)*step };
+    agent.facing = dx < 0 ? -1 : 1;
+    updateAgentDOM(agent);
+  });
+}
+
+/* ---------------------------------------------------------------
+   INIT
+--------------------------------------------------------------- */
+function init(){
+  buildRooms();
+  buildAgents();
+  buildRoster();
+
+  state.agents.forEach(a => { updateAgentDOM(a); updateRosterRow(a, Date.now()); });
+  updateStatChips();
+
+  pushLog('info','ARIA','Fleet initialized. All systems nominal.');
+  pushLog('success','NOVA','Daily revenue report generated.');
+  pushLog('proposal','VESTA', PROPOSALS[0], true);
+
+  document.getElementById('btn-simulate').addEventListener('click', simulateEvent);
+  document.getElementById('btn-toggle-all').addEventListener('click', toggleAllAutonomy);
+
+  requestAnimationFrame(spriteLoop);
+  setInterval(clockTick, 1000);
+  setInterval(movementTick, 400);
+}
+
+init();
+</script>
+</body>
+</html>
