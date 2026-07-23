@@ -21,7 +21,10 @@ interface Kin {
   moving: boolean
   pause: number // seconds left standing still
   trail: { x: number; y: number }[]
-  forceReturn?: boolean // walking home after a meeting (overrides parked state)
+  // Waypoint route for meeting gather/return: agents follow this through the
+  // doorway + corridor so they never cross the empty space outside the ship.
+  path?: { x: number; y: number }[]
+  pathFace?: 1 | -1 // facing to hold once a gather path completes (at the seat)
 }
 
 // A seat around the control-centre table for a called meeting.
@@ -57,6 +60,9 @@ interface AgentsLayerProps {
   // table and stays there until the meeting ends, then walks back home.
   meetingActive?: boolean
   meetingSeatOf?: (agentId: string) => MeetingSeat | null
+  // The two ends of a room's corridor (hub side + room side) so meeting routes
+  // follow the walkway instead of cutting across open space outside the ship.
+  corridorEndsOf?: (roomId: string) => { hubEnd: { x: number; y: number }; roomEnd: { x: number; y: number } } | null
 }
 
 // Margin added to a keep-out zone's radius so a wandering agent's own
@@ -131,6 +137,7 @@ export function AgentsLayer({
   onSelectAgent,
   meetingActive,
   meetingSeatOf,
+  corridorEndsOf,
 }: AgentsLayerProps) {
   // Resolve an agent's home position from the room's floor diamond when one is
   // defined, else fall back to the raw bounds rectangle (e.g. the hub).
@@ -147,6 +154,8 @@ export function AgentsLayer({
   meetingRef.current = meetingActive ?? false
   const seatFnRef = useRef(meetingSeatOf)
   seatFnRef.current = meetingSeatOf
+  const endsFnRef = useRef(corridorEndsOf)
+  endsFnRef.current = corridorEndsOf
   const prevMeetingRef = useRef(false)
 
   // Deterministic initial positions (from posX/posY) so SSR and first client
@@ -175,15 +184,28 @@ export function AgentsLayer({
       const meeting = meetingRef.current
       const MEET_SPEED = SPEED * 1.4 // gather/return a touch faster than a stroll
 
-      // Meeting just ended → send everyone (even parked crew) back home.
-      if (prevMeetingRef.current && !meeting) {
+      // Meeting toggled → build each agent's walkway route (gather or return).
+      // Routes go via the doorway + corridor so agents stay on the ship.
+      if (meeting !== prevMeetingRef.current) {
         for (const a of agents) {
           const k = kin[a.id]
           if (!k) continue
-          const home = homePos(a.room, a.posX, a.posY)
-          k.tx = home.x
-          k.ty = home.y
-          k.forceReturn = true
+          const ends = endsFnRef.current?.(a.room) ?? null
+          if (meeting) {
+            const seat = seatFnRef.current?.(a.id) ?? null
+            const wps: { x: number; y: number }[] = []
+            if (ends) wps.push(ends.roomEnd, ends.hubEnd) // out through the door, down the corridor
+            if (seat) wps.push({ x: seat.x, y: seat.y })  // then to the seat in the hub
+            k.path = wps
+            k.pathFace = seat?.face
+          } else {
+            const home = homePos(a.room, a.posX, a.posY)
+            const wps: { x: number; y: number }[] = []
+            if (ends) wps.push(ends.hubEnd, ends.roomEnd) // back up the corridor, through the door
+            wps.push({ x: home.x, y: home.y })            // then to a spot on the room floor
+            k.path = wps
+            k.pathFace = undefined
+          }
         }
       }
       prevMeetingRef.current = meeting
@@ -197,8 +219,8 @@ export function AgentsLayer({
           k = kin[a.id] = { room: a.room, x, y, tx: x, ty: y, facing: 1, moving: false, pause: 1, trail: [] }
         }
         // If the agent was reassigned to a new room, snap into it (skip while
-        // meeting/returning so the cross-map walk isn't interrupted).
-        if (k.room !== a.room && !meeting && !k.forceReturn) {
+        // it's following a meeting route so the walk isn't interrupted).
+        if (k.room !== a.room && !(k.path && k.path.length)) {
           k.room = a.room
           const { x, y } = homePos(a.room, a.posX, a.posY)
           k.x = x
@@ -208,39 +230,21 @@ export function AgentsLayer({
           k.trail = []
         }
 
-        // ── Meeting: every agent walks to its seat and holds there. ──
-        if (meeting) {
-          const seat = seatFnRef.current?.(a.id) ?? null
-          if (seat) {
-            k.forceReturn = false
-            const dx = seat.x - k.x
-            const dy = seat.y - k.y
-            const dist = Math.hypot(dx, dy)
-            if (dist < 1) {
-              k.moving = false
-              k.facing = seat.face
-              if (k.trail.length) k.trail.shift()
-            } else {
-              k.x += (dx / dist) * MEET_SPEED * dt
-              k.y += (dy / dist) * MEET_SPEED * dt
-              k.moving = true
-              if (Math.abs(dx) > 0.4) k.facing = dx < 0 ? -1 : 1
-              k.trail.push({ x: k.x, y: k.y })
-              if (k.trail.length > 12) k.trail.shift()
-            }
-            continue
-          }
-        }
-
-        // ── Returning home after a meeting (overrides parked state). ──
-        if (k.forceReturn) {
-          const dx = k.tx - k.x
-          const dy = k.ty - k.y
+        // ── Following a meeting route (gather or return). ──
+        if (k.path && k.path.length) {
+          const wp = k.path[0]
+          const dx = wp.x - k.x
+          const dy = wp.y - k.y
           const dist = Math.hypot(dx, dy)
-          if (dist < 1.5) {
-            k.forceReturn = false
-            k.moving = false
-            if (k.trail.length) k.trail.shift()
+          if (dist < 1.4) {
+            k.path.shift()
+            if (k.path.length === 0) {
+              k.moving = false
+              if (meeting && k.pathFace) k.facing = k.pathFace
+              // Returned home: re-anchor the wander target so normal roaming
+              // resumes from here rather than walking back to the seat.
+              if (!meeting) { k.tx = k.x; k.ty = k.y; k.pause = 0.4 }
+            }
           } else {
             k.x += (dx / dist) * MEET_SPEED * dt
             k.y += (dy / dist) * MEET_SPEED * dt
@@ -249,6 +253,15 @@ export function AgentsLayer({
             k.trail.push({ x: k.x, y: k.y })
             if (k.trail.length > 12) k.trail.shift()
           }
+          continue
+        }
+
+        // ── Meeting in progress, route done → hold at the seat. ──
+        if (meeting) {
+          k.moving = false
+          const seat = seatFnRef.current?.(a.id) ?? null
+          if (seat) k.facing = seat.face
+          if (k.trail.length) k.trail.shift()
           continue
         }
 

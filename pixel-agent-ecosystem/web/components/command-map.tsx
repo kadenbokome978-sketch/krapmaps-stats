@@ -68,6 +68,17 @@ const CORRIDORS: Record<string, {
   },
 }
 
+// The two ends of a room's corridor as points — hub side and room side — so
+// meeting routes can send agents along the walkway (never across open space).
+function corridorEnds(roomId: string): { hubEnd: { x: number; y: number }; roomEnd: { x: number; y: number } } | null {
+  const c = CORRIDORS[roomId]
+  if (!c) return null
+  if (c.orient === "v") {
+    return { hubEnd: { x: c.cross, y: c.a }, roomEnd: { x: c.cross, y: c.b } }
+  }
+  return { hubEnd: { x: c.a, y: c.cross }, roomEnd: { x: c.b, y: c.cross } }
+}
+
 type RoomId = "bridge" | "workshop" | "treasury" | "radar" | "research"
 
 // ── Agent movement geometry (shared with AgentsLayer) ──
@@ -1148,6 +1159,7 @@ export function CommandMap({
           onSelectAgent={onSelectAgent}
           meetingActive={meeting}
           meetingSeatOf={(id) => meetingSeats[id] ?? null}
+          corridorEndsOf={corridorEnds}
         />
 
         {/* ── Drama: periodic activity bursts pinging out of active rooms ── */}
