@@ -118,23 +118,36 @@ function roomFloor(roomId: string): FloorDiamond | null {
   }
 }
 
-// Keep-out zone around furniture that sits ON the floor diamond (the specimen
-// tank in research and the radar dish in radar are dead-centre of their
-// floors), so crew circle them instead of standing inside them. Wall-mounted
-// pieces (furnace, vault) are already outside the floor diamond, so they need
-// no separate zone. Normalized (0–1) room-box coords + radius in canvas units.
-const FOCAL_POINT: Record<string, { nx: number; ny: number; r: number }> = {
-  research: { nx: 0.5, ny: 0.58, r: 22 }, // specimen tank
-  radar: { nx: 0.48, ny: 0.6, r: 24 },    // radar dish
+// Keep-out zones around furniture that sits ON the floor diamond, so crew
+// circle each piece instead of standing inside it. Wall-mounted pieces
+// (furnace, vault) are already outside the floor diamond and need no zone.
+// One entry per floor object; coords read off public/rooms/*.png through the
+// same cover-crop the <image slice> render applies. Normalized (0–1)
+// room-box coords + radius in canvas units.
+const FOCAL_POINTS: Record<string, { nx: number; ny: number; r: number }[]> = {
+  research: [
+    { nx: 0.5, ny: 0.58, r: 22 },  // specimen tank (centre floor)
+  ],
+  radar: [
+    { nx: 0.48, ny: 0.6, r: 24 },  // radar dish (centre floor)
+  ],
+  treasury: [
+    { nx: 0.54, ny: 0.55, r: 22 }, // treasure chests + gold pile
+    { nx: 0.76, ny: 0.61, r: 26 }, // crystal pedestal row (right floor)
+  ],
+  workshop: [
+    { nx: 0.67, ny: 0.59, r: 20 }, // anvil on stump
+    { nx: 0.79, ny: 0.64, r: 18 }, // crate / ammo-box stack (right floor)
+  ],
 }
 
-function roomKeepOut(roomId: string): { cx: number; cy: number; r: number } | null {
+function roomKeepOuts(roomId: string): { cx: number; cy: number; r: number }[] {
   const b = ROOM_BOXES[roomId]
-  const f = FOCAL_POINT[roomId]
-  if (!b || !f) return null
+  const fs = FOCAL_POINTS[roomId]
+  if (!b || !fs) return []
   const bx = b.x - b.w / 2
   const by = b.y - b.h / 2
-  return { cx: bx + f.nx * b.w, cy: by + f.ny * b.h, r: f.r }
+  return fs.map((f) => ({ cx: bx + f.nx * b.w, cy: by + f.ny * b.h, r: f.r }))
 }
 
 function roomColorOf(roomId: string): string {
@@ -1104,7 +1117,7 @@ export function CommandMap({
           agents={agents}
           boundsOf={roomInnerBounds}
           floorOf={roomFloor}
-          keepOutOf={roomKeepOut}
+          keepOutsOf={roomKeepOuts}
           colorOf={roomColorOf}
           statusColorOf={statusColorOf}
           selectedAgent={selectedAgent}
