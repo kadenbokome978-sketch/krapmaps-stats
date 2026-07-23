@@ -94,14 +94,19 @@ function roomInnerBounds(roomId: string): Bounds {
 }
 
 // Keep-out zone around each room's illustrated focal object (furnace, tank,
-// vault, radar dish — same focal points RoomAmbient animates over) so
-// wandering crew route around the art instead of walking across it.
-// Normalized (0–1) room coords + radius in canvas units.
+// vault, radar dish) so wandering crew route around the art instead of
+// walking across it. Coordinates were read directly off the source PNGs
+// (public/rooms/*.png) and converted through the same "cover" crop the
+// <image preserveAspectRatio="xMidYMid slice"> render applies (square art
+// into a non-square box), not guessed — the old values here were copied
+// from RoomAmbient's glow-effect placement, which itself wasn't aligned to
+// where the art actually is, hence agents visually walking through it.
+// Normalized (0–1) room-box coords + radius in canvas units.
 const FOCAL_POINT: Record<string, { nx: number; ny: number; r: number }> = {
-  workshop: { nx: 0.36, ny: 0.52, r: 26 },
-  research: { nx: 0.28, ny: 0.5, r: 24 },
-  treasury: { nx: 0.5, ny: 0.48, r: 28 },
-  radar: { nx: 0.5, ny: 0.5, r: 30 },
+  workshop: { nx: 0.75, ny: 0.4, r: 34 },  // furnace + anvil, right side
+  research: { nx: 0.5, ny: 0.51, r: 24 },  // specimen tank, centred
+  treasury: { nx: 0.78, ny: 0.33, r: 30 }, // vault wheel, right side
+  radar: { nx: 0.48, ny: 0.52, r: 34 },    // dish + floor radar, centred
 }
 
 function roomKeepOut(roomId: string): { cx: number; cy: number; r: number } | null {
