@@ -1,6 +1,0 @@
-{
-  "cleanUrls": true,
-  "rewrites": [
-    { "source": "/", "destination": "/pixel-agent-ecosystem/index.html" }
-  ]
-}

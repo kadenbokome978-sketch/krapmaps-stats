@@ -1,0 +1,274 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  /* Cyberpunk neon palette */
+  --color-neon-green: var(--neon-green);
+  --color-neon-orange: var(--neon-orange);
+  --color-neon-purple: var(--neon-purple);
+  --color-neon-cyan: var(--neon-cyan);
+  --color-neon-red: var(--neon-red);
+  --color-neon-yellow: var(--neon-yellow);
+
+  --color-room-bridge: var(--room-bridge);
+  --color-room-workshop: var(--room-workshop);
+  --color-room-treasury: var(--room-treasury);
+  --color-room-radar: var(--room-radar);
+
+  --color-surface: var(--surface);
+  --color-surface-bright: var(--surface-bright);
+  --color-grid-line: var(--grid-line);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+
+  --font-sans: var(--font-mono-stack);
+  --font-mono: var(--font-mono-stack);
+
+  --color-sidebar-ring: var(--border);
+  --color-sidebar-border: var(--border);
+  --color-sidebar-accent-foreground: var(--foreground);
+  --color-sidebar-accent: var(--surface);
+  --color-sidebar-primary-foreground: var(--foreground);
+  --color-sidebar-primary: var(--primary);
+  --color-sidebar-foreground: var(--foreground);
+  --color-sidebar: var(--surface);
+  --color-chart-5: var(--neon-green);
+  --color-chart-4: var(--neon-cyan);
+  --color-chart-3: var(--neon-orange);
+  --color-chart-2: var(--neon-purple);
+  --color-chart-1: var(--neon-red);
+}
+
+:root {
+  color-scheme: dark;
+
+  /* Base palette */
+  --background: #05060a;
+  --foreground: #c8d0e0;
+  --card: #0c0e15;
+  --card-foreground: #c8d0e0;
+  --popover: #0c0e15;
+  --popover-foreground: #c8d0e0;
+  --primary: #39ff8f;
+  --primary-foreground: #000000;
+  --secondary: #111520;
+  --secondary-foreground: #8899bb;
+  --muted: #0e1018;
+  --muted-foreground: #4a5570;
+  --accent: #38e4ff;
+  --accent-foreground: #000000;
+  --destructive: #ff3355;
+  --border: rgba(255, 255, 255, 0.06);
+  --input: rgba(255, 255, 255, 0.08);
+  --ring: #39ff8f;
+
+  /* Neon colors */
+  --neon-green: #39ff8f;
+  --neon-orange: #ff9d2b;
+  --neon-purple: #b464ff;
+  --neon-cyan: #38e4ff;
+  --neon-red: #ff3355;
+  --neon-yellow: #ffee33;
+
+  /* Room accent colors */
+  --room-bridge: #39ff8f;
+  --room-workshop: #ff9d2b;
+  --room-treasury: #b464ff;
+  --room-radar: #38e4ff;
+
+  /* Surface tones */
+  --surface: #0a0c14;
+  --surface-bright: #111827;
+  --grid-line: rgba(56, 228, 255, 0.04);
+
+  --radius: 0.25rem;
+
+  /* Monospace font stack */
+  --font-mono-stack: var(--font-jetbrains-mono), 'Fira Code', 'Cascadia Code', ui-monospace, 'Courier New', monospace;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    box-sizing: border-box;
+  }
+
+  body {
+    @apply bg-background text-foreground font-mono;
+    font-size: 13px;
+    line-height: 1.5;
+    overflow: hidden;
+  }
+
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(56, 228, 255, 0.2);
+    border-radius: 2px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(56, 228, 255, 0.4);
+  }
+}
+
+/* ===================== */
+/* CYBERPUNK ANIMATIONS   */
+/* ===================== */
+
+@keyframes neon-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes flicker {
+  0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% { opacity: 1; }
+  20%, 24%, 55% { opacity: 0.4; }
+}
+
+@keyframes scan-line {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+@keyframes data-flow {
+  0% { stroke-dashoffset: 200; opacity: 0; }
+  10% { opacity: 1; }
+  90% { opacity: 1; }
+  100% { stroke-dashoffset: 0; opacity: 0; }
+}
+
+@keyframes orbit {
+  from { transform: rotate(0deg) translateX(14px) rotate(0deg); }
+  to   { transform: rotate(360deg) translateX(14px) rotate(-360deg); }
+}
+
+@keyframes radar-sweep {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes vault-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes smoke-rise {
+  0%   { transform: translateY(0) scaleX(1); opacity: 0.6; }
+  100% { transform: translateY(-18px) scaleX(1.6); opacity: 0; }
+}
+
+@keyframes ember-rise {
+  0%   { transform: translateY(0) scale(1); opacity: 0; }
+  20%  { opacity: 0.9; }
+  100% { transform: translateY(-22px) scale(0.4); opacity: 0; }
+}
+
+@keyframes bubble-rise {
+  0%   { transform: translateY(0) scale(0.6); opacity: 0; }
+  25%  { opacity: 0.9; }
+  100% { transform: translateY(-26px) scale(1); opacity: 0; }
+}
+
+@keyframes coin-bounce {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-4px); }
+}
+
+@keyframes sprite-walk {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(2px); }
+  75% { transform: translateX(-2px); }
+}
+
+@keyframes status-ring-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 currentColor; opacity: 1; }
+  50% { box-shadow: 0 0 0 3px transparent; opacity: 0.7; }
+}
+
+@keyframes badge-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+@keyframes particle-move {
+  0%   { transform: translate(0, 0); opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { transform: translate(var(--dx, 20px), var(--dy, -20px)); opacity: 0; }
+}
+
+@keyframes terminal-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes slide-in-right {
+  from { transform: translateX(16px); opacity: 0; }
+  to   { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes slide-in-up {
+  from { transform: translateY(8px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes glow-border {
+  0%, 100% { box-shadow: 0 0 6px currentColor, inset 0 0 6px rgba(0,0,0,0.5); }
+  50%       { box-shadow: 0 0 14px currentColor, 0 0 28px rgba(57,255,143,0.1), inset 0 0 6px rgba(0,0,0,0.5); }
+}
+
+@keyframes waterfall {
+  0%   { background-position: 0 0; }
+  100% { background-position: 0 40px; }
+}
+
+/* Subtle standing-still sway for idle/parked crew */
+@keyframes idle-sway {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50%      { transform: translateY(-0.7px) rotate(-1.4deg); }
+}
+
+/* CRT static/flicker for the full-viewport overlay */
+@keyframes crt-flicker {
+  0%   { opacity: 0.5; }
+  8%   { opacity: 0.42; }
+  9%   { opacity: 0.55; }
+  20%  { opacity: 0.48; }
+  50%  { opacity: 0.52; }
+  70%  { opacity: 0.45; }
+  71%  { opacity: 0.56; }
+  100% { opacity: 0.5; }
+}

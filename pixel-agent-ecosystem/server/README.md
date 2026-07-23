@@ -69,9 +69,10 @@ matching it.
   }
 }
 ```
-`room` must be one of `bridge`, `workshop`, `treasury`, `radar`.
+`room` must be one of `bridge`, `workshop`, `treasury`, `radar`, `research`.
 `status` one of `active`, `paused`, `error`, `idle`. `timer` is seconds
-remaining, only meaningful while `status` is `paused`. Any field can be
+remaining, only meaningful while `status` is `paused` (the dashboard shows
+this as a "rate-limited" countdown chip). Any field can be
 omitted on an update to an already-known agent - only provided fields
 change.
 
