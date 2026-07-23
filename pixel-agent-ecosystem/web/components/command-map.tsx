@@ -330,76 +330,108 @@ function DataBus() {
 // ─────────────────────────────────────────────
 // Corridor walkway — a real, wide walkable path
 // ─────────────────────────────────────────────
+// How far along the corridor (from the hub end) the bend toward the door
+// starts. The hub-side portion stays perfectly centred on the hub's port;
+// only the last stretch angles over to meet the room's actual door.
+const BEND_T = 0.55
+
+function perp(dx: number, dy: number, mag: number) {
+  const len = Math.hypot(dx, dy) || 1
+  return { x: (-dy / len) * mag, y: (dx / len) * mag }
+}
+
 function Corridor({ room, isSelected }: { room: Room; isSelected: boolean }) {
   const c = CORRIDORS[room.id]
-  if (!c) return null
+  const box = ROOM_BOXES[room.id]
+  if (!c || !box) return null
 
   const halfW = WALKWAY_W / 2
-  const lo = Math.min(c.a, c.b)
-  const hi = Math.max(c.a, c.b)
-  const len = hi - lo
+  const doorOffset = DOOR_OFFSET[room.id] || 0
+  // c.a is always the hub-side coordinate, c.b the room-side one (by how
+  // CORRIDORS is defined) - the door offset is applied only at the room end.
+  const offsetPx = doorOffset * (c.orient === "v" ? box.w : box.h)
 
-  let rx: number, ry: number, rw: number, rh: number
-  let centrePath: string
+  // hub point (centred), bend point (still centred, partway along), room
+  // point (shifted to the door's real position).
+  const hub = c.orient === "v" ? { x: c.cross, y: c.a } : { x: c.a, y: c.cross }
+  const roomPt = c.orient === "v" ? { x: c.cross + offsetPx, y: c.b } : { x: c.b, y: c.cross + offsetPx }
+  const bend = c.orient === "v"
+    ? { x: c.cross, y: c.a + (c.b - c.a) * BEND_T }
+    : { x: c.a + (c.b - c.a) * BEND_T, y: c.cross }
+
+  const p1 = perp(bend.x - hub.x, bend.y - hub.y, halfW) // segment 1 is axis-aligned
+  const p2 = perp(roomPt.x - bend.x, roomPt.y - bend.y, halfW) // segment 2 may be angled
+
+  const leftPts = [
+    { x: hub.x + p1.x, y: hub.y + p1.y },
+    { x: bend.x + p1.x, y: bend.y + p1.y },
+    { x: bend.x + p2.x, y: bend.y + p2.y },
+    { x: roomPt.x + p2.x, y: roomPt.y + p2.y },
+  ]
+  const rightPts = [
+    { x: hub.x - p1.x, y: hub.y - p1.y },
+    { x: bend.x - p1.x, y: bend.y - p1.y },
+    { x: bend.x - p2.x, y: bend.y - p2.y },
+    { x: roomPt.x - p2.x, y: roomPt.y - p2.y },
+  ]
+  const floorPoints = [...leftPts, ...[...rightPts].reverse()]
+    .map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`)
+    .join(" ")
+  const leftRail = leftPts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")
+  const rightRail = rightPts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ")
+  const centrePath = `M${hub.x},${hub.y} L${bend.x},${bend.y} L${roomPt.x},${roomPt.y}`
+
+  // Floor rungs along the straight (hub-side) portion only.
   const rungs: React.ReactNode[] = []
   const RUNG_STEP = 16
-
-  if (c.orient === "v") {
-    rx = c.cross - halfW; ry = lo; rw = WALKWAY_W; rh = len
-    centrePath = `M${c.cross},${c.a} L${c.cross},${c.b}`
-    for (let y = lo + RUNG_STEP; y < hi - 2; y += RUNG_STEP) {
-      rungs.push(
-        <line key={y} x1={c.cross - halfW + 5} y1={y} x2={c.cross + halfW - 5} y2={y}
+  const seg1Len = Math.hypot(bend.x - hub.x, bend.y - hub.y)
+  for (let d = RUNG_STEP; d < seg1Len - 2; d += RUNG_STEP) {
+    const t = d / (seg1Len || 1)
+    const cx = hub.x + (bend.x - hub.x) * t
+    const cy = hub.y + (bend.y - hub.y) * t
+    rungs.push(
+      c.orient === "v" ? (
+        <line key={d} x1={cx - halfW + 5} y1={cy} x2={cx + halfW - 5} y2={cy}
+          stroke={room.color} strokeWidth={0.6} strokeOpacity={0.16} />
+      ) : (
+        <line key={d} x1={cx} y1={cy - halfW + 5} x2={cx} y2={cy + halfW - 5}
           stroke={room.color} strokeWidth={0.6} strokeOpacity={0.16} />
       )
-    }
-  } else {
-    rx = lo; ry = c.cross - halfW; rw = len; rh = WALKWAY_W
-    centrePath = `M${c.a},${c.cross} L${c.b},${c.cross}`
-    for (let x = lo + RUNG_STEP; x < hi - 2; x += RUNG_STEP) {
-      rungs.push(
-        <line key={x} x1={x} y1={c.cross - halfW + 5} x2={x} y2={c.cross + halfW - 5}
-          stroke={room.color} strokeWidth={0.6} strokeOpacity={0.16} />
-      )
-    }
+    )
   }
 
   const railOpacity = isSelected ? 0.85 : 0.5
+  const glowBounds = {
+    minX: Math.min(hub.x, bend.x, roomPt.x) - halfW - 6,
+    minY: Math.min(hub.y, bend.y, roomPt.y) - halfW - 6,
+    maxX: Math.max(hub.x, bend.x, roomPt.x) + halfW + 6,
+    maxY: Math.max(hub.y, bend.y, roomPt.y) + halfW + 6,
+  }
 
   return (
     <g>
       {/* Outer ambient glow around the whole walkway */}
-      <rect x={rx - 6} y={ry - 6} width={rw + 12} height={rh + 12} rx={8}
+      <rect x={glowBounds.minX} y={glowBounds.minY}
+        width={glowBounds.maxX - glowBounds.minX} height={glowBounds.maxY - glowBounds.minY} rx={8}
         fill={room.color} opacity={isSelected ? 0.10 : 0.05}
         filter={`url(#blur-${room.id})`}
       />
       {/* Walkway floor */}
-      <rect x={rx} y={ry} width={rw} height={rh} rx={4}
+      <polygon points={floorPoints}
         fill={`${room.color}12`}
         stroke={room.color} strokeWidth={0.5} strokeOpacity={0.2}
       />
       {/* Floor rungs */}
       {rungs}
       {/* Side rails — bright glowing walls along the length */}
-      {c.orient === "v" ? (
-        <>
-          <line x1={rx} y1={ry} x2={rx} y2={ry + rh}
-            stroke={room.color} strokeWidth={2} strokeOpacity={railOpacity} strokeLinecap="round" />
-          <line x1={rx + rw} y1={ry} x2={rx + rw} y2={ry + rh}
-            stroke={room.color} strokeWidth={2} strokeOpacity={railOpacity} strokeLinecap="round" />
-        </>
-      ) : (
-        <>
-          <line x1={rx} y1={ry} x2={rx + rw} y2={ry}
-            stroke={room.color} strokeWidth={2} strokeOpacity={railOpacity} strokeLinecap="round" />
-          <line x1={rx} y1={ry + rh} x2={rx + rw} y2={ry + rh}
-            stroke={room.color} strokeWidth={2} strokeOpacity={railOpacity} strokeLinecap="round" />
-        </>
-      )}
+      <polyline points={leftRail} fill="none"
+        stroke={room.color} strokeWidth={2} strokeOpacity={railOpacity} strokeLinecap="round" strokeLinejoin="round" />
+      <polyline points={rightRail} fill="none"
+        stroke={room.color} strokeWidth={2} strokeOpacity={railOpacity} strokeLinecap="round" strokeLinejoin="round" />
       {/* Centre energy stream — animated flowing dashes */}
       <path d={centrePath} fill="none"
         stroke={room.color} strokeWidth={3} strokeOpacity={isSelected ? 0.9 : 0.5}
-        strokeDasharray="10 8" strokeLinecap="round"
+        strokeDasharray="10 8" strokeLinecap="round" strokeLinejoin="round"
       >
         <animate attributeName="stroke-dashoffset" from="0" to="-36" dur="1s" repeatCount="indefinite" />
       </path>
