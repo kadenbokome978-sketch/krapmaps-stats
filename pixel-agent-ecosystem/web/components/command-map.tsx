@@ -330,114 +330,76 @@ function DataBus() {
 // ─────────────────────────────────────────────
 // Corridor walkway — a real, wide walkable path
 // ─────────────────────────────────────────────
-// How far along the corridor (from the hub end) the bend toward the door
-// starts. The hub-side portion stays perfectly centred on the hub's port;
-// only the last stretch angles over to meet the room's actual door.
-const BEND_T = 0.55
-
 function Corridor({ room, isSelected }: { room: Room; isSelected: boolean }) {
   const c = CORRIDORS[room.id]
-  const box = ROOM_BOXES[room.id]
-  if (!c || !box) return null
+  if (!c) return null
 
   const halfW = WALKWAY_W / 2
-  const doorOffset = DOOR_OFFSET[room.id] || 0
-  // c.a is always the hub-side coordinate, c.b the room-side one (by how
-  // CORRIDORS is defined) - the door offset is applied only at the room end.
-  const offsetPx = doorOffset * (c.orient === "v" ? box.w : box.h)
+  const lo = Math.min(c.a, c.b)
+  const hi = Math.max(c.a, c.b)
+  const len = hi - lo
 
-  // hub point (centred), bend point (still centred, partway along), room
-  // point (shifted to the door's real position).
-  const hub = c.orient === "v" ? { x: c.cross, y: c.a } : { x: c.a, y: c.cross }
-  const roomPt = c.orient === "v" ? { x: c.cross + offsetPx, y: c.b } : { x: c.b, y: c.cross + offsetPx }
-  const bend = c.orient === "v"
-    ? { x: c.cross, y: c.a + (c.b - c.a) * BEND_T }
-    : { x: c.a + (c.b - c.a) * BEND_T, y: c.cross }
-
-  const railOpacity = isSelected ? 0.85 : 0.5
-  const centrePath = `M${hub.x},${hub.y} L${bend.x},${bend.y} L${roomPt.x},${roomPt.y}`
-
-  // Segment 1 (hub -> bend): a plain axis-aligned rect, identical to how the
-  // whole corridor used to be drawn - this part never bends.
-  const seg1 = c.orient === "v"
-    ? { x: c.cross - halfW, y: Math.min(hub.y, bend.y), w: WALKWAY_W, h: Math.abs(bend.y - hub.y) }
-    : { x: Math.min(hub.x, bend.x), y: c.cross - halfW, w: Math.abs(bend.x - hub.x), h: WALKWAY_W }
-
-  // Segment 2 (bend -> door): a plain rect drawn pointing along +x starting
-  // at the bend point, then rotated to aim at the door. Using a rotation
-  // transform instead of hand-computed polygon vertices means it can never
-  // self-intersect or come out lopsided, whatever the angle.
-  const seg2Len = Math.hypot(roomPt.x - bend.x, roomPt.y - bend.y)
-  const seg2Angle = (Math.atan2(roomPt.y - bend.y, roomPt.x - bend.x) * 180) / Math.PI
-
+  let rx: number, ry: number, rw: number, rh: number
+  let centrePath: string
   const rungs: React.ReactNode[] = []
   const RUNG_STEP = 16
-  const seg1Len = c.orient === "v" ? seg1.h : seg1.w
-  for (let d = RUNG_STEP; d < seg1Len - 2; d += RUNG_STEP) {
-    const t = d / (seg1Len || 1)
-    const cx = hub.x + (bend.x - hub.x) * t
-    const cy = hub.y + (bend.y - hub.y) * t
-    rungs.push(
-      c.orient === "v" ? (
-        <line key={d} x1={cx - halfW + 5} y1={cy} x2={cx + halfW - 5} y2={cy}
-          stroke={room.color} strokeWidth={0.6} strokeOpacity={0.16} />
-      ) : (
-        <line key={d} x1={cx} y1={cy - halfW + 5} x2={cx} y2={cy + halfW - 5}
+
+  if (c.orient === "v") {
+    rx = c.cross - halfW; ry = lo; rw = WALKWAY_W; rh = len
+    centrePath = `M${c.cross},${c.a} L${c.cross},${c.b}`
+    for (let y = lo + RUNG_STEP; y < hi - 2; y += RUNG_STEP) {
+      rungs.push(
+        <line key={y} x1={c.cross - halfW + 5} y1={y} x2={c.cross + halfW - 5} y2={y}
           stroke={room.color} strokeWidth={0.6} strokeOpacity={0.16} />
       )
-    )
+    }
+  } else {
+    rx = lo; ry = c.cross - halfW; rw = len; rh = WALKWAY_W
+    centrePath = `M${c.a},${c.cross} L${c.b},${c.cross}`
+    for (let x = lo + RUNG_STEP; x < hi - 2; x += RUNG_STEP) {
+      rungs.push(
+        <line key={x} x1={x} y1={c.cross - halfW + 5} x2={x} y2={c.cross + halfW - 5}
+          stroke={room.color} strokeWidth={0.6} strokeOpacity={0.16} />
+      )
+    }
   }
 
-  const glowBounds = {
-    minX: Math.min(hub.x, bend.x, roomPt.x) - halfW - 6,
-    minY: Math.min(hub.y, bend.y, roomPt.y) - halfW - 6,
-    maxX: Math.max(hub.x, bend.x, roomPt.x) + halfW + 6,
-    maxY: Math.max(hub.y, bend.y, roomPt.y) + halfW + 6,
-  }
+  const railOpacity = isSelected ? 0.85 : 0.5
 
   return (
     <g>
       {/* Outer ambient glow around the whole walkway */}
-      <rect x={glowBounds.minX} y={glowBounds.minY}
-        width={glowBounds.maxX - glowBounds.minX} height={glowBounds.maxY - glowBounds.minY} rx={8}
+      <rect x={rx - 6} y={ry - 6} width={rw + 12} height={rh + 12} rx={8}
         fill={room.color} opacity={isSelected ? 0.10 : 0.05}
         filter={`url(#blur-${room.id})`}
       />
-
-      {/* Segment 1: straight, hub-aligned */}
-      <rect x={seg1.x} y={seg1.y} width={seg1.w} height={seg1.h} rx={4}
-        fill={`${room.color}12`} stroke={room.color} strokeWidth={0.5} strokeOpacity={0.2} />
+      {/* Walkway floor */}
+      <rect x={rx} y={ry} width={rw} height={rh} rx={4}
+        fill={`${room.color}12`}
+        stroke={room.color} strokeWidth={0.5} strokeOpacity={0.2}
+      />
+      {/* Floor rungs */}
       {rungs}
+      {/* Side rails — bright glowing walls along the length */}
       {c.orient === "v" ? (
         <>
-          <line x1={seg1.x} y1={seg1.y} x2={seg1.x} y2={seg1.y + seg1.h}
+          <line x1={rx} y1={ry} x2={rx} y2={ry + rh}
             stroke={room.color} strokeWidth={2} strokeOpacity={railOpacity} strokeLinecap="round" />
-          <line x1={seg1.x + seg1.w} y1={seg1.y} x2={seg1.x + seg1.w} y2={seg1.y + seg1.h}
+          <line x1={rx + rw} y1={ry} x2={rx + rw} y2={ry + rh}
             stroke={room.color} strokeWidth={2} strokeOpacity={railOpacity} strokeLinecap="round" />
         </>
       ) : (
         <>
-          <line x1={seg1.x} y1={seg1.y} x2={seg1.x + seg1.w} y2={seg1.y}
+          <line x1={rx} y1={ry} x2={rx + rw} y2={ry}
             stroke={room.color} strokeWidth={2} strokeOpacity={railOpacity} strokeLinecap="round" />
-          <line x1={seg1.x} y1={seg1.y + seg1.h} x2={seg1.x + seg1.w} y2={seg1.y + seg1.h}
+          <line x1={rx} y1={ry + rh} x2={rx + rw} y2={ry + rh}
             stroke={room.color} strokeWidth={2} strokeOpacity={railOpacity} strokeLinecap="round" />
         </>
       )}
-
-      {/* Segment 2: rotated to aim at the actual door */}
-      <g transform={`rotate(${seg2Angle.toFixed(2)}, ${bend.x}, ${bend.y})`}>
-        <rect x={bend.x} y={bend.y - halfW} width={seg2Len} height={WALKWAY_W} rx={4}
-          fill={`${room.color}12`} stroke={room.color} strokeWidth={0.5} strokeOpacity={0.2} />
-        <line x1={bend.x} y1={bend.y - halfW} x2={bend.x + seg2Len} y2={bend.y - halfW}
-          stroke={room.color} strokeWidth={2} strokeOpacity={railOpacity} strokeLinecap="round" />
-        <line x1={bend.x} y1={bend.y + halfW} x2={bend.x + seg2Len} y2={bend.y + halfW}
-          stroke={room.color} strokeWidth={2} strokeOpacity={railOpacity} strokeLinecap="round" />
-      </g>
-
       {/* Centre energy stream — animated flowing dashes */}
       <path d={centrePath} fill="none"
         stroke={room.color} strokeWidth={3} strokeOpacity={isSelected ? 0.9 : 0.5}
-        strokeDasharray="10 8" strokeLinecap="round" strokeLinejoin="round"
+        strokeDasharray="10 8" strokeLinecap="round"
       >
         <animate attributeName="stroke-dashoffset" from="0" to="-36" dur="1s" repeatCount="indefinite" />
       </path>
@@ -612,17 +574,6 @@ function RoomAmbient({ roomId, bx, by, w, h }: {
 // connects. Rendered as a bright break in the wall with a glowing doorframe
 // and a soft pulsing floor-light, so each room reads as having a real entrance.
 // ─────────────────────────────────────────────
-// Each room's illustrated door isn't drawn dead-center in its art - measured
-// directly from the source images (as a fraction of room width/height,
-// offset from centre) so the glowing threshold actually sits on top of the
-// painted doorway instead of floating over a wall.
-const DOOR_OFFSET: Record<string, number> = {
-  workshop: -0.14,
-  radar: -0.085,
-  treasury: -0.04,
-  research: 0,
-}
-
 function Doorway({ roomId, color }: { roomId: string; color: string }) {
   const b = ROOM_BOXES[roomId]
   if (!b) return null
@@ -635,24 +586,21 @@ function Doorway({ roomId, color }: { roomId: string; color: string }) {
     roomId === "treasury" ? "left" :
     "right" // research
   const DW = 30 // doorway width
-  const offset = DOOR_OFFSET[roomId] || 0
-  const cx = b.x + offset * b.w // door centre x, for top/bottom rooms
-  const cy = b.y + offset * b.h // door centre y, for left/right rooms
 
   // Compute the door segment endpoints + an inward glow rectangle.
   let x1 = 0, y1 = 0, x2 = 0, y2 = 0, gx = 0, gy = 0, gw = 0, gh = 0
   if (side === "bottom") {
-    x1 = cx - DW / 2; y1 = by + b.h; x2 = cx + DW / 2; y2 = by + b.h
-    gx = cx - DW / 2; gy = by + b.h - 10; gw = DW; gh = 12
+    x1 = b.x - DW / 2; y1 = by + b.h; x2 = b.x + DW / 2; y2 = by + b.h
+    gx = b.x - DW / 2; gy = by + b.h - 10; gw = DW; gh = 12
   } else if (side === "top") {
-    x1 = cx - DW / 2; y1 = by; x2 = cx + DW / 2; y2 = by
-    gx = cx - DW / 2; gy = by - 2; gw = DW; gh = 12
+    x1 = b.x - DW / 2; y1 = by; x2 = b.x + DW / 2; y2 = by
+    gx = b.x - DW / 2; gy = by - 2; gw = DW; gh = 12
   } else if (side === "left") {
-    x1 = bx; y1 = cy - DW / 2; x2 = bx; y2 = cy + DW / 2
-    gx = bx - 2; gy = cy - DW / 2; gw = 12; gh = DW
+    x1 = bx; y1 = b.y - DW / 2; x2 = bx; y2 = b.y + DW / 2
+    gx = bx - 2; gy = b.y - DW / 2; gw = 12; gh = DW
   } else { // right
-    x1 = bx + b.w; y1 = cy - DW / 2; x2 = bx + b.w; y2 = cy + DW / 2
-    gx = bx + b.w - 10; gy = cy - DW / 2; gw = 12; gh = DW
+    x1 = bx + b.w; y1 = b.y - DW / 2; x2 = bx + b.w; y2 = b.y + DW / 2
+    gx = bx + b.w - 10; gy = b.y - DW / 2; gw = 12; gh = DW
   }
 
   return (
