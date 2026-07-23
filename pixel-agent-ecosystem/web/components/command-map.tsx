@@ -37,29 +37,8 @@ const ROOM_IMAGES: Record<string, string> = {
 }
 const HUB_IMAGE = "/rooms/control-centre.png"
 
-// Each room's illustrated arch door sits on an isometric front face, offset
-// from the geometric edge-centre (the faces recede up-left). DOOR_CROSS is the
-// lateral position (x for the N/S rooms, y for the E/W rooms) of that arch,
-// measured off public/rooms/*.png. Corridors, hub dock points and the doorway
-// glow all align to it so the walkway visibly leads into the drawn door rather
-// than a blank wall.
-const DOOR_CROSS: Record<string, number> = {
-  workshop: 350, // arch on the front-left face (x, was centre 390)
-  radar: 372,    // lit doorway left-of-centre on the back wall (x, was 390)
-  treasury: 264, // arch high on the left face (y, was centre 280)
-  research: 274, // arch high on the right face (y, was centre 280)
-}
-
-// Distance from the hub centre along a cardinal axis out to the rim, at a given
-// perpendicular offset — so an off-centre corridor still docks flush on the
-// circular hub instead of leaving a gap.
-function hubReach(perpOffset: number): number {
-  const r2 = HUB.r * HUB.r - perpOffset * perpOffset
-  return r2 > 0 ? Math.sqrt(r2) : 0
-}
-
-// Corridors are straight cardinal walkways, now laterally aligned to each
-// room's door (DOOR_CROSS). Small overlaps on both ends avoid gaps.
+// Corridors are straight cardinal walkways, derived from the boxes so they
+// always meet the room faces. Small overlaps on both ends avoid gaps.
 const WALKWAY_W = 46
 const CORRIDORS: Record<string, {
   orient: "v" | "h"
@@ -68,23 +47,23 @@ const CORRIDORS: Record<string, {
   b: number
 }> = {
   workshop: {
-    orient: "v", cross: DOOR_CROSS.workshop,
-    a: HUB.y - hubReach(DOOR_CROSS.workshop - HUB.x) + 8,
+    orient: "v", cross: ROOM_BOXES.workshop.x,
+    a: HUB.y - HUB.r + 8,
     b: ROOM_BOXES.workshop.y + ROOM_BOXES.workshop.h / 2 - 6,
   },
   radar: {
-    orient: "v", cross: DOOR_CROSS.radar,
-    a: HUB.y + hubReach(DOOR_CROSS.radar - HUB.x) - 8,
+    orient: "v", cross: ROOM_BOXES.radar.x,
+    a: HUB.y + HUB.r - 8,
     b: ROOM_BOXES.radar.y - ROOM_BOXES.radar.h / 2 + 6,
   },
   treasury: {
-    orient: "h", cross: DOOR_CROSS.treasury,
-    a: HUB.x + hubReach(DOOR_CROSS.treasury - HUB.y) - 8,
+    orient: "h", cross: ROOM_BOXES.treasury.y,
+    a: HUB.x + HUB.r - 8,
     b: ROOM_BOXES.treasury.x - ROOM_BOXES.treasury.w / 2 + 6,
   },
   research: {
-    orient: "h", cross: DOOR_CROSS.research,
-    a: HUB.x - hubReach(DOOR_CROSS.research - HUB.y) + 8,
+    orient: "h", cross: ROOM_BOXES.research.y,
+    a: HUB.x - HUB.r + 8,
     b: ROOM_BOXES.research.x + ROOM_BOXES.research.w / 2 - 6,
   },
 }
@@ -676,25 +655,21 @@ function Doorway({ roomId, color }: { roomId: string; color: string }) {
     roomId === "treasury" ? "left" :
     "right" // research
   const DW = 30 // doorway width
-  // Centre the opening on the room's actual arch (DOOR_CROSS), not the edge
-  // midpoint, so it sits where the corridor now docks and the art shows a door.
-  const cx = DOOR_CROSS[roomId] ?? b.x
-  const cy = DOOR_CROSS[roomId] ?? b.y
 
   // Compute the door segment endpoints + an inward glow rectangle.
   let x1 = 0, y1 = 0, x2 = 0, y2 = 0, gx = 0, gy = 0, gw = 0, gh = 0
   if (side === "bottom") {
-    x1 = cx - DW / 2; y1 = by + b.h; x2 = cx + DW / 2; y2 = by + b.h
-    gx = cx - DW / 2; gy = by + b.h - 10; gw = DW; gh = 12
+    x1 = b.x - DW / 2; y1 = by + b.h; x2 = b.x + DW / 2; y2 = by + b.h
+    gx = b.x - DW / 2; gy = by + b.h - 10; gw = DW; gh = 12
   } else if (side === "top") {
-    x1 = cx - DW / 2; y1 = by; x2 = cx + DW / 2; y2 = by
-    gx = cx - DW / 2; gy = by - 2; gw = DW; gh = 12
+    x1 = b.x - DW / 2; y1 = by; x2 = b.x + DW / 2; y2 = by
+    gx = b.x - DW / 2; gy = by - 2; gw = DW; gh = 12
   } else if (side === "left") {
-    x1 = bx; y1 = cy - DW / 2; x2 = bx; y2 = cy + DW / 2
-    gx = bx - 2; gy = cy - DW / 2; gw = 12; gh = DW
+    x1 = bx; y1 = b.y - DW / 2; x2 = bx; y2 = b.y + DW / 2
+    gx = bx - 2; gy = b.y - DW / 2; gw = 12; gh = DW
   } else { // right
-    x1 = bx + b.w; y1 = cy - DW / 2; x2 = bx + b.w; y2 = cy + DW / 2
-    gx = bx + b.w - 10; gy = cy - DW / 2; gw = 12; gh = DW
+    x1 = bx + b.w; y1 = b.y - DW / 2; x2 = bx + b.w; y2 = b.y + DW / 2
+    gx = bx + b.w - 10; gy = b.y - DW / 2; gw = 12; gh = DW
   }
 
   return (
@@ -1109,20 +1084,10 @@ export function CommandMap({
             strokeWidth={selectedRoom === "bridge" ? 2.4 : 1.6}
             strokeOpacity={selectedRoom === "bridge" ? 1 : 0.7}
           />
-          {/* Airlock ports where each corridor docks onto the hub — placed at
-              the door-aligned dock point of each corridor (not pure N/E/S/W),
-              so the port meets its walkway flush. */}
-          {([
-            { room: "workshop", dir: [0, -1] },
-            { room: "treasury", dir: [1, 0] },
-            { room: "radar", dir: [0, 1] },
-            { room: "research", dir: [-1, 0] },
-          ] as { room: string; dir: [number, number] }[]).map(({ room, dir }, i) => {
-            const [dx, dy] = dir
-            // For a vertical corridor the dock's x is DOOR_CROSS and y is on the
-            // rim; for a horizontal one it's mirrored.
-            const px = dx !== 0 ? HUB.x + dx * hubReach(DOOR_CROSS[room] - HUB.y) : DOOR_CROSS[room]
-            const py = dy !== 0 ? HUB.y + dy * hubReach(DOOR_CROSS[room] - HUB.x) : DOOR_CROSS[room]
+          {/* Airlock ports where each corridor docks onto the hub (N/E/S/W) */}
+          {([[0, -1], [1, 0], [0, 1], [-1, 0]] as [number, number][]).map(([dx, dy], i) => {
+            const px = HUB.x + dx * HUB.r
+            const py = HUB.y + dy * HUB.r
             const angle = Math.round(Math.atan2(dy, dx) * (180 / Math.PI))
             return (
               <g key={`port-${i}`} transform={`translate(${px}, ${py}) rotate(${angle})`}>
