@@ -330,7 +330,7 @@ export default function Page() {
       <div className="flex flex-col md:flex-row flex-1 min-h-0">
         {/* Map canvas — fixed slice of the viewport on mobile, flexes on desktop */}
         <div
-          className="relative w-full min-w-0 shrink-0 h-[46vh] overflow-hidden md:h-auto md:min-h-0 md:flex-1 md:shrink"
+          className="relative w-full min-w-0 shrink-0 h-[46dvh] overflow-hidden md:h-auto md:min-h-0 md:flex-1 md:shrink"
           style={{ background: "#05060a" }}
         >
           {/* Subtle radial vignette */}

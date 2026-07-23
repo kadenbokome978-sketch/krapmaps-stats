@@ -1233,8 +1233,9 @@ export function CommandMap({
         }}
       />
 
-      {/* ── Zoom controls (interaction) ── */}
-      <div className="absolute bottom-3 right-3 z-20 flex flex-col gap-1">
+      {/* ── Zoom controls (interaction) — top-right on mobile so the comms
+          panel edge never rides over them, bottom-right on desktop ── */}
+      <div className="absolute right-3 top-3 z-20 flex flex-col gap-1 md:bottom-3 md:top-auto">
         {[
           { label: "+", fn: () => zoomBy(0.3), aria: "Zoom in" },
           { label: "−", fn: () => zoomBy(-0.3), aria: "Zoom out" },
