@@ -101,20 +101,26 @@ function roomInnerBounds(roomId: string): Bounds {
 // normalized (0–1) room-box coords: centre + half-extents, tuned against the
 // rendered rooms (see the isometric floor in public/rooms/*.png).
 interface FloorDiamond { cx: number; cy: number; halfW: number; halfH: number }
-const FLOOR_NORM: { cx: number; cy: number; halfW: number; halfH: number } = {
-  cx: 0.5, cy: 0.64, halfW: 0.33, halfH: 0.22,
+// Per-room walkable diamond. Workshop/treasury keep the roomy default; radar
+// and research ring most of their walls with console desks/counters, so their
+// diamonds are pulled tighter and toward the open front-centre floor.
+const FLOOR_DEFAULT = { cx: 0.5, cy: 0.64, halfW: 0.33, halfH: 0.22 }
+const FLOOR_NORMS: Record<string, { cx: number; cy: number; halfW: number; halfH: number }> = {
+  research: { cx: 0.54, cy: 0.7, halfW: 0.22, halfH: 0.15 },
+  radar: { cx: 0.46, cy: 0.69, halfW: 0.24, halfH: 0.15 },
 }
 
 function roomFloor(roomId: string): FloorDiamond | null {
   const b = ROOM_BOXES[roomId]
   if (!b) return null
+  const n = FLOOR_NORMS[roomId] ?? FLOOR_DEFAULT
   const bx = b.x - b.w / 2
   const by = b.y - b.h / 2
   return {
-    cx: bx + FLOOR_NORM.cx * b.w,
-    cy: by + FLOOR_NORM.cy * b.h,
-    halfW: FLOOR_NORM.halfW * b.w,
-    halfH: FLOOR_NORM.halfH * b.h,
+    cx: bx + n.cx * b.w,
+    cy: by + n.cy * b.h,
+    halfW: n.halfW * b.w,
+    halfH: n.halfH * b.h,
   }
 }
 
@@ -127,9 +133,11 @@ function roomFloor(roomId: string): FloorDiamond | null {
 const FOCAL_POINTS: Record<string, { nx: number; ny: number; r: number }[]> = {
   research: [
     { nx: 0.5, ny: 0.58, r: 22 },  // specimen tank (centre floor)
+    { nx: 0.3, ny: 0.72, r: 22 },  // front-left counter (microscopes/beakers)
   ],
   radar: [
-    { nx: 0.48, ny: 0.6, r: 24 },  // radar dish (centre floor)
+    { nx: 0.48, ny: 0.6, r: 22 },  // radar dish (centre floor)
+    { nx: 0.72, ny: 0.66, r: 20 }, // front-right equipment desk
   ],
   treasury: [
     { nx: 0.54, ny: 0.55, r: 22 }, // treasure chests + gold pile
