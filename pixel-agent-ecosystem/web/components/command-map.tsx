@@ -72,7 +72,11 @@ type RoomId = "bridge" | "workshop" | "treasury" | "radar" | "research"
 
 // ── Agent movement geometry (shared with AgentsLayer) ──
 // Inner padding keeps wandering crew clear of the label strip and edges.
-const AGENT_PAD = { x: 22, top: 34, bot: 18 }
+// Sized to fully contain the sprite's visual footprint (image + name tag),
+// not just its feet anchor — see agent-sprite.tsx's MAX_NAME cap, which
+// bounds the tag to a known max width/height so this padding can't be
+// silently outgrown by a long agent name.
+const AGENT_PAD = { x: 34, top: 42, bot: 18 }
 
 function roomInnerBounds(roomId: string): Bounds {
   const b = ROOM_BOXES[roomId]
@@ -87,6 +91,71 @@ function roomInnerBounds(roomId: string): Bounds {
     minY: by + AGENT_PAD.top,
     maxY: by + b.h - AGENT_PAD.bot,
   }
+}
+
+// Walkable floor is the isometric tile diamond in the lower-centre of each
+// room — NOT the full box. The upper part of every room's art is back-wall
+// (shelves, screens, wall-mounted furnace/vault), so constraining wandering
+// to a bounding rectangle let crew stroll up onto the walls / float above the
+// floor. This diamond keeps them on the actual tiled floor. Given in
+// normalized (0–1) room-box coords: centre + half-extents, tuned against the
+// rendered rooms (see the isometric floor in public/rooms/*.png).
+interface FloorDiamond { cx: number; cy: number; halfW: number; halfH: number }
+// Per-room walkable diamond. Workshop/treasury keep the roomy default; radar
+// and research ring most of their walls with console desks/counters, so their
+// diamonds are pulled tighter and toward the open front-centre floor.
+const FLOOR_DEFAULT = { cx: 0.5, cy: 0.64, halfW: 0.33, halfH: 0.22 }
+const FLOOR_NORMS: Record<string, { cx: number; cy: number; halfW: number; halfH: number }> = {
+  research: { cx: 0.54, cy: 0.7, halfW: 0.22, halfH: 0.15 },
+  radar: { cx: 0.46, cy: 0.69, halfW: 0.24, halfH: 0.15 },
+}
+
+function roomFloor(roomId: string): FloorDiamond | null {
+  const b = ROOM_BOXES[roomId]
+  if (!b) return null
+  const n = FLOOR_NORMS[roomId] ?? FLOOR_DEFAULT
+  const bx = b.x - b.w / 2
+  const by = b.y - b.h / 2
+  return {
+    cx: bx + n.cx * b.w,
+    cy: by + n.cy * b.h,
+    halfW: n.halfW * b.w,
+    halfH: n.halfH * b.h,
+  }
+}
+
+// Keep-out zones around furniture that sits ON the floor diamond, so crew
+// circle each piece instead of standing inside it. Wall-mounted pieces
+// (furnace, vault) are already outside the floor diamond and need no zone.
+// One entry per floor object; coords read off public/rooms/*.png through the
+// same cover-crop the <image slice> render applies. Normalized (0–1)
+// room-box coords + radius in canvas units.
+const FOCAL_POINTS: Record<string, { nx: number; ny: number; r: number }[]> = {
+  research: [
+    { nx: 0.5, ny: 0.58, r: 22 },  // specimen tank (centre floor)
+    { nx: 0.3, ny: 0.72, r: 22 },  // front-left counter (microscopes/beakers)
+  ],
+  radar: [
+    { nx: 0.48, ny: 0.6, r: 22 },  // radar dish (centre floor)
+    { nx: 0.72, ny: 0.66, r: 20 }, // front-right equipment desk
+  ],
+  treasury: [
+    { nx: 0.54, ny: 0.55, r: 22 }, // treasure chests + gold pile
+    { nx: 0.76, ny: 0.61, r: 26 }, // crystal pedestal row (right floor)
+  ],
+  workshop: [
+    { nx: 0.67, ny: 0.59, r: 20 }, // anvil on stump
+    { nx: 0.79, ny: 0.64, r: 18 }, // crate / ammo-box stack (right floor)
+  ],
+}
+
+function roomKeepOuts(roomId: string): { cx: number; cy: number; r: number }[] {
+  const b = ROOM_BOXES[roomId]
+  const fs = FOCAL_POINTS[roomId]
+  if (!b || !fs) return []
+  const bx = b.x - b.w / 2
+  const by = b.y - b.h / 2
+  return fs.map((f) => ({ cx: bx + f.nx * b.w, cy: by + f.ny * b.h, r: f.r }))
 }
 
 function roomColorOf(roomId: string): string {
@@ -1055,6 +1124,8 @@ export function CommandMap({
         <AgentsLayer
           agents={agents}
           boundsOf={roomInnerBounds}
+          floorOf={roomFloor}
+          keepOutsOf={roomKeepOuts}
           colorOf={roomColorOf}
           statusColorOf={statusColorOf}
           selectedAgent={selectedAgent}

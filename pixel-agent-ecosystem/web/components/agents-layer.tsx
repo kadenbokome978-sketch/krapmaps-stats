@@ -23,13 +23,77 @@ interface Kin {
   trail: { x: number; y: number }[]
 }
 
+export interface KeepOut {
+  cx: number
+  cy: number
+  r: number
+}
+
+export interface Floor {
+  cx: number
+  cy: number
+  halfW: number
+  halfH: number
+}
+
 interface AgentsLayerProps {
   agents: Agent[]
   boundsOf: (roomId: string) => Bounds
+  floorOf?: (roomId: string) => Floor | null
+  keepOutsOf?: (roomId: string) => KeepOut[]
   colorOf: (roomId: string) => string
   statusColorOf: (agent: Agent) => string
   selectedAgent: string | null
   onSelectAgent: (id: string | null) => void
+}
+
+// Margin added to a keep-out zone's radius so a wandering agent's own
+// footprint clears the art rather than just its feet-anchor point.
+const AGENT_FOOTPRINT_R = 10
+
+// True if the point clears every keep-out zone (with footprint margin).
+function clearsAll(x: number, y: number, zones: KeepOut[]): boolean {
+  for (const z of zones) {
+    if (Math.hypot(x - z.cx, y - z.cy) < z.r + AGENT_FOOTPRINT_R) return false
+  }
+  return true
+}
+
+// Uniform-ish sample inside the isometric floor diamond (|u|+|v| <= 1),
+// avoiding every keep-out zone. Falls back to the diamond centre if the room
+// is so tightly boxed by furniture that no sample lands clear.
+function sampleFloor(floor: Floor, zones: KeepOut[]): { tx: number; ty: number } {
+  for (let tries = 0; tries < 32; tries++) {
+    const u = Math.random() * 2 - 1
+    const v = Math.random() * 2 - 1
+    if (Math.abs(u) + Math.abs(v) > 1) continue // outside the diamond
+    const tx = floor.cx + u * floor.halfW
+    const ty = floor.cy + v * floor.halfH
+    if (clearsAll(tx, ty, zones)) return { tx, ty }
+  }
+  return { tx: floor.cx, ty: floor.cy }
+}
+
+// Map an agent's normalized spawn (posX/posY in 0–1) into the floor diamond,
+// so first-render positions land on the floor too — not just the wander
+// targets. Projects any point onto/into the diamond and nudges clear of any
+// keep-out zone it lands in, pushing outward from that zone's centre.
+function spawnOnFloor(floor: Floor, zones: KeepOut[], posX: number, posY: number): { x: number; y: number } {
+  let u = posX * 2 - 1
+  let v = posY * 2 - 1
+  const m = Math.abs(u) + Math.abs(v)
+  if (m > 1) { u /= m; v /= m } // project onto the diamond edge
+  let x = floor.cx + u * floor.halfW * 0.85
+  let y = floor.cy + v * floor.halfH * 0.85
+  for (const z of zones) {
+    const clearR = z.r + AGENT_FOOTPRINT_R
+    const d = Math.hypot(x - z.cx, y - z.cy)
+    if (d < clearR && d > 0.01) {
+      x = z.cx + ((x - z.cx) / d) * clearR
+      y = z.cy + ((y - z.cy) / d) * clearR
+    }
+  }
+  return { x, y }
 }
 
 // Only these statuses actively wander; blocked crew stay put but still fidget.
@@ -47,20 +111,29 @@ function canWander(status: Agent["status"]) {
 export function AgentsLayer({
   agents,
   boundsOf,
+  floorOf,
+  keepOutsOf,
   colorOf,
   statusColorOf,
   selectedAgent,
   onSelectAgent,
 }: AgentsLayerProps) {
+  // Resolve an agent's home position from the room's floor diamond when one is
+  // defined, else fall back to the raw bounds rectangle (e.g. the hub).
+  const homePos = (roomId: string, posX: number, posY: number): { x: number; y: number } => {
+    const floor = floorOf?.(roomId) ?? null
+    if (floor) return spawnOnFloor(floor, keepOutsOf?.(roomId) ?? [], posX, posY)
+    const b = boundsOf(roomId)
+    return { x: b.minX + posX * (b.maxX - b.minX), y: b.minY + posY * (b.maxY - b.minY) }
+  }
+
   // Deterministic initial positions (from posX/posY) so SSR and first client
   // render match — the random wandering only kicks in after mount.
   const kinRef = useRef<Record<string, Kin> | null>(null)
   if (kinRef.current === null) {
     const init: Record<string, Kin> = {}
     for (const a of agents) {
-      const b = boundsOf(a.room)
-      const x = b.minX + a.posX * (b.maxX - b.minX)
-      const y = b.minY + a.posY * (b.maxY - b.minY)
+      const { x, y } = homePos(a.room, a.posX, a.posY)
       init[a.id] = { room: a.room, x, y, tx: x, ty: y, facing: 1, moving: false, pause: 1.2, trail: [] }
     }
     kinRef.current = init
@@ -80,19 +153,20 @@ export function AgentsLayer({
 
       for (const a of agents) {
         let k = kin[a.id]
-        const b = boundsOf(a.room)
+        const floor = floorOf?.(a.room) ?? null
+        const zones = keepOutsOf?.(a.room) ?? []
         if (!k) {
-          const x = b.minX + a.posX * (b.maxX - b.minX)
-          const y = b.minY + a.posY * (b.maxY - b.minY)
+          const { x, y } = homePos(a.room, a.posX, a.posY)
           k = kin[a.id] = { room: a.room, x, y, tx: x, ty: y, facing: 1, moving: false, pause: 1, trail: [] }
         }
         // If the agent was reassigned to a new room, snap into it.
         if (k.room !== a.room) {
           k.room = a.room
-          k.x = b.minX + a.posX * (b.maxX - b.minX)
-          k.y = b.minY + a.posY * (b.maxY - b.minY)
-          k.tx = k.x
-          k.ty = k.y
+          const { x, y } = homePos(a.room, a.posX, a.posY)
+          k.x = x
+          k.y = y
+          k.tx = x
+          k.ty = y
           k.trail = []
         }
 
@@ -114,10 +188,18 @@ export function AgentsLayer({
         const dy = k.ty - k.y
         const dist = Math.hypot(dx, dy)
         if (dist < 1.5) {
-          // Arrived — pick a new waypoint and pause to fidget.
+          // Arrived — pick a new waypoint on the floor diamond (clear of the
+          // room's furniture keep-out zone, if any) and pause to fidget.
           k.pause = 0.8 + Math.random() * 2.6
-          k.tx = b.minX + Math.random() * (b.maxX - b.minX)
-          k.ty = b.minY + Math.random() * (b.maxY - b.minY)
+          let next: { tx: number; ty: number }
+          if (floor) {
+            next = sampleFloor(floor, zones)
+          } else {
+            const b = boundsOf(a.room)
+            next = { tx: b.minX + Math.random() * (b.maxX - b.minX), ty: b.minY + Math.random() * (b.maxY - b.minY) }
+          }
+          k.tx = next.tx
+          k.ty = next.ty
           k.moving = false
         } else {
           const vx = (dx / dist) * SPEED * dt
