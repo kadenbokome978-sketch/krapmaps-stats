@@ -72,7 +72,11 @@ type RoomId = "bridge" | "workshop" | "treasury" | "radar" | "research"
 
 // ── Agent movement geometry (shared with AgentsLayer) ──
 // Inner padding keeps wandering crew clear of the label strip and edges.
-const AGENT_PAD = { x: 22, top: 34, bot: 18 }
+// Sized to fully contain the sprite's visual footprint (image + name tag),
+// not just its feet anchor — see agent-sprite.tsx's MAX_NAME cap, which
+// bounds the tag to a known max width/height so this padding can't be
+// silently outgrown by a long agent name.
+const AGENT_PAD = { x: 34, top: 42, bot: 18 }
 
 function roomInnerBounds(roomId: string): Bounds {
   const b = ROOM_BOXES[roomId]
@@ -87,6 +91,26 @@ function roomInnerBounds(roomId: string): Bounds {
     minY: by + AGENT_PAD.top,
     maxY: by + b.h - AGENT_PAD.bot,
   }
+}
+
+// Keep-out zone around each room's illustrated focal object (furnace, tank,
+// vault, radar dish — same focal points RoomAmbient animates over) so
+// wandering crew route around the art instead of walking across it.
+// Normalized (0–1) room coords + radius in canvas units.
+const FOCAL_POINT: Record<string, { nx: number; ny: number; r: number }> = {
+  workshop: { nx: 0.36, ny: 0.52, r: 26 },
+  research: { nx: 0.28, ny: 0.5, r: 24 },
+  treasury: { nx: 0.5, ny: 0.48, r: 28 },
+  radar: { nx: 0.5, ny: 0.5, r: 30 },
+}
+
+function roomKeepOut(roomId: string): { cx: number; cy: number; r: number } | null {
+  const b = ROOM_BOXES[roomId]
+  const f = FOCAL_POINT[roomId]
+  if (!b || !f) return null
+  const bx = b.x - b.w / 2
+  const by = b.y - b.h / 2
+  return { cx: bx + f.nx * b.w, cy: by + f.ny * b.h, r: f.r }
 }
 
 function roomColorOf(roomId: string): string {
@@ -1055,6 +1079,7 @@ export function CommandMap({
         <AgentsLayer
           agents={agents}
           boundsOf={roomInnerBounds}
+          keepOutOf={roomKeepOut}
           colorOf={roomColorOf}
           statusColorOf={statusColorOf}
           selectedAgent={selectedAgent}

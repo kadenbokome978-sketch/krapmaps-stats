@@ -23,13 +23,41 @@ interface Kin {
   trail: { x: number; y: number }[]
 }
 
+export interface KeepOut {
+  cx: number
+  cy: number
+  r: number
+}
+
 interface AgentsLayerProps {
   agents: Agent[]
   boundsOf: (roomId: string) => Bounds
+  keepOutOf?: (roomId: string) => KeepOut | null
   colorOf: (roomId: string) => string
   statusColorOf: (agent: Agent) => string
   selectedAgent: string | null
   onSelectAgent: (id: string | null) => void
+}
+
+// Margin added to a keep-out zone's radius so a wandering agent's own
+// footprint clears the art rather than just its feet-anchor point.
+const AGENT_FOOTPRINT_R = 10
+
+function pickWaypoint(b: Bounds, keepOut: KeepOut | null): { tx: number; ty: number } {
+  const clearR = keepOut ? keepOut.r + AGENT_FOOTPRINT_R : 0
+  for (let tries = 0; tries < 8; tries++) {
+    const tx = b.minX + Math.random() * (b.maxX - b.minX)
+    const ty = b.minY + Math.random() * (b.maxY - b.minY)
+    if (!keepOut || Math.hypot(tx - keepOut.cx, ty - keepOut.cy) >= clearR) {
+      return { tx, ty }
+    }
+  }
+  // Fell through 8 rejections (tight room) — last draw is still in-bounds,
+  // just possibly close to the art. Better than an infinite loop.
+  return {
+    tx: b.minX + Math.random() * (b.maxX - b.minX),
+    ty: b.minY + Math.random() * (b.maxY - b.minY),
+  }
 }
 
 // Only these statuses actively wander; blocked crew stay put but still fidget.
@@ -47,6 +75,7 @@ function canWander(status: Agent["status"]) {
 export function AgentsLayer({
   agents,
   boundsOf,
+  keepOutOf,
   colorOf,
   statusColorOf,
   selectedAgent,
@@ -114,10 +143,12 @@ export function AgentsLayer({
         const dy = k.ty - k.y
         const dist = Math.hypot(dx, dy)
         if (dist < 1.5) {
-          // Arrived — pick a new waypoint and pause to fidget.
+          // Arrived — pick a new waypoint (clear of the room's furniture
+          // keep-out zone, if any) and pause to fidget.
           k.pause = 0.8 + Math.random() * 2.6
-          k.tx = b.minX + Math.random() * (b.maxX - b.minX)
-          k.ty = b.minY + Math.random() * (b.maxY - b.minY)
+          const next = pickWaypoint(b, keepOutOf?.(a.room) ?? null)
+          k.tx = next.tx
+          k.ty = next.ty
           k.moving = false
         } else {
           const vx = (dx / dist) * SPEED * dt

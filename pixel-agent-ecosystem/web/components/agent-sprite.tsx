@@ -116,8 +116,12 @@ export function AgentSprite({
   // Standing crew perform a room-specific idle action (not while erroring).
   const showAction = !moving && !isError
 
-  // Compact name tag width scales with the name length
-  const nameW = Math.max(30, agent.name.length * 4.2 + 12)
+  // Name tag: capped length so the tag can never grow past what the room
+  // padding accounts for (see AGENT_PAD in command-map.tsx).
+  const MAX_NAME = 12
+  const displayName =
+    agent.name.length > MAX_NAME ? agent.name.slice(0, MAX_NAME - 1) + "…" : agent.name
+  const nameW = Math.max(30, displayName.length * 4.2 + 12)
 
   // Round positions so server/client render byte-identical SVG (no float drift).
   const tx = Math.round(x * 100) / 100
@@ -222,7 +226,7 @@ export function AgentSprite({
             <text x={1} y={-36.5} textAnchor="middle" dominantBaseline="middle"
               fontSize={6.5} fontFamily="monospace" letterSpacing={0.6}
               fill={statusColor} fontWeight="bold">
-              {agent.name}
+              {displayName}
             </text>
             <text x={1} y={-29} textAnchor="middle" dominantBaseline="middle"
               fontSize={4.8} fontFamily="monospace" fill="#8899bb">
@@ -237,7 +241,7 @@ export function AgentSprite({
             <text x={0} y={-34.2} textAnchor="middle" dominantBaseline="middle"
               fontSize={5.6} fontFamily="monospace" letterSpacing={0.4}
               fill={statusColor} fontWeight="bold">
-              {agent.name}
+              {displayName}
             </text>
             <line x1={0} y1={-29} x2={0} y2={-22} stroke={statusColor} strokeWidth={0.6} strokeOpacity={0.45} />
           </>
