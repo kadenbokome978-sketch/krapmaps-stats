@@ -1200,27 +1200,26 @@ export function CommandMap({
         </div>
       )}
 
-      {/* ── Call-meeting button, centred on the control-centre hub ── */}
+      {/* ── Call-meeting push-button, centred on the control-centre table.
+          Green when idle, red while a meeting is in progress; no label. ── */}
       <button
         type="button"
         aria-label={meeting ? "End meeting" : "Call all agents to a meeting"}
         aria-pressed={meeting}
+        title={meeting ? "End meeting" : "Call meeting"}
         onClick={() => setMeeting((m) => !m)}
-        className="absolute left-1/2 top-1/2 z-30 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-full px-3 py-1.5 font-mono text-[10px] font-bold tracking-widest transition-colors"
+        className="absolute left-1/2 top-1/2 z-30 h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full transition-colors"
         style={{
-          background: meeting ? "rgba(40,8,10,0.9)" : "rgba(4,18,12,0.9)",
-          border: `1px solid ${meeting ? "rgba(255,90,90,0.85)" : "rgba(57,255,143,0.75)"}`,
-          color: meeting ? "#ff8a8a" : "#39ff8f",
-          boxShadow: meeting ? "0 0 14px rgba(255,90,90,0.4)" : "0 0 14px rgba(57,255,143,0.35)",
-          animation: meeting ? "neon-pulse 1.4s infinite" : undefined,
+          background: meeting
+            ? "radial-gradient(circle at 35% 30%, #ffb0b0, #e8283a 58%, #a01020)"
+            : "radial-gradient(circle at 35% 30%, #b6ffd4, #24d96c 55%, #0f9a44)",
+          border: `1px solid ${meeting ? "rgba(255,130,130,0.95)" : "rgba(110,255,170,0.95)"}`,
+          boxShadow: meeting
+            ? "0 0 16px rgba(255,60,70,0.6), inset 0 1px 2px rgba(255,255,255,0.45)"
+            : "0 0 16px rgba(40,235,115,0.55), inset 0 1px 2px rgba(255,255,255,0.45)",
+          animation: meeting ? "neon-pulse 1.2s infinite" : undefined,
         }}
-      >
-        <span
-          className="inline-block h-2 w-2 rounded-full"
-          style={{ background: meeting ? "#ff5a5a" : "#39ff8f", boxShadow: `0 0 6px ${meeting ? "#ff5a5a" : "#39ff8f"}` }}
-        />
-        {meeting ? "END MEETING" : "CALL MEETING"}
-      </button>
+      />
 
       {/* ── Zoom controls (interaction) ── */}
       <div className="absolute bottom-3 right-3 z-20 flex flex-col gap-1">
