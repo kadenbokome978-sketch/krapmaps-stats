@@ -90,10 +90,10 @@ function Topbar({
       </div>
 
       {/* Divider */}
-      <div className="h-4 w-px bg-[rgba(255,255,255,0.06)]" />
+      <div className="hidden md:block h-4 w-px bg-[rgba(255,255,255,0.06)]" />
 
       {/* Selected room indicator */}
-      <div className="flex items-center gap-2 min-w-[120px]">
+      <div className="hidden md:flex items-center gap-2 min-w-[120px]">
         {room ? (
           <>
             <div className="w-1.5 h-1.5 rounded-full" style={{ background: room.color }} />
@@ -137,10 +137,10 @@ function Topbar({
       </div>
 
       {/* Divider */}
-      <div className="h-4 w-px bg-[rgba(255,255,255,0.06)]" />
+      <div className="hidden md:block h-4 w-px bg-[rgba(255,255,255,0.06)]" />
 
       {/* Live / Demo relay controls */}
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="hidden md:flex items-center gap-2 shrink-0">
         {mode === "live" && (
           <input
             value={relayUrl}
@@ -185,10 +185,10 @@ function Topbar({
       </div>
 
       {/* Divider */}
-      <div className="h-4 w-px bg-[rgba(255,255,255,0.06)]" />
+      <div className="hidden md:block h-4 w-px bg-[rgba(255,255,255,0.06)]" />
 
       {/* Sys status */}
-      <div className="flex items-center gap-1.5 shrink-0">
+      <div className="hidden md:flex items-center gap-1.5 shrink-0">
         <span className="font-mono text-[9px] tracking-widest text-[#4a5570]">SYS</span>
         <span
           className="font-mono text-[9px] tracking-widest text-[#39ff8f]"
@@ -325,11 +325,12 @@ export default function Page() {
         onEnterDemo={relay.enterDemo}
       />
 
-      {/* Main body: map + sidebar */}
-      <div className="flex flex-1 min-h-0">
-        {/* Map canvas */}
+      {/* Main body: map + sidebar. Row on desktop; stacked on mobile so the
+          map gets full width on top and the activity panel fills below it. */}
+      <div className="flex flex-col md:flex-row flex-1 min-h-0">
+        {/* Map canvas — fixed slice of the viewport on mobile, flexes on desktop */}
         <div
-          className="flex-1 min-w-0 min-h-0 relative overflow-hidden"
+          className="relative w-full min-w-0 shrink-0 h-[46vh] overflow-hidden md:h-auto md:min-h-0 md:flex-1 md:shrink"
           style={{ background: "#05060a" }}
         >
           {/* Subtle radial vignette */}
@@ -350,10 +351,9 @@ export default function Page() {
           </div>
         </div>
 
-        {/* Right sidebar */}
+        {/* Activity panel — full-width below the map on mobile, fixed rail on desktop */}
         <div
-          className="w-[300px] shrink-0 flex flex-col min-h-0"
-          style={{ borderLeft: "1px solid rgba(56,228,255,0.08)" }}
+          className="flex w-full flex-1 flex-col min-h-0 border-t border-[rgba(56,228,255,0.08)] md:w-[300px] md:flex-none md:shrink-0 md:border-t-0 md:border-l"
         >
           <ActivitySidebar
             logs={logs}
