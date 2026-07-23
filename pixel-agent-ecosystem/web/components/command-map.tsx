@@ -93,20 +93,39 @@ function roomInnerBounds(roomId: string): Bounds {
   }
 }
 
-// Keep-out zone around each room's illustrated focal object (furnace, tank,
-// vault, radar dish) so wandering crew route around the art instead of
-// walking across it. Coordinates were read directly off the source PNGs
-// (public/rooms/*.png) and converted through the same "cover" crop the
-// <image preserveAspectRatio="xMidYMid slice"> render applies (square art
-// into a non-square box), not guessed — the old values here were copied
-// from RoomAmbient's glow-effect placement, which itself wasn't aligned to
-// where the art actually is, hence agents visually walking through it.
-// Normalized (0–1) room-box coords + radius in canvas units.
+// Walkable floor is the isometric tile diamond in the lower-centre of each
+// room — NOT the full box. The upper part of every room's art is back-wall
+// (shelves, screens, wall-mounted furnace/vault), so constraining wandering
+// to a bounding rectangle let crew stroll up onto the walls / float above the
+// floor. This diamond keeps them on the actual tiled floor. Given in
+// normalized (0–1) room-box coords: centre + half-extents, tuned against the
+// rendered rooms (see the isometric floor in public/rooms/*.png).
+interface FloorDiamond { cx: number; cy: number; halfW: number; halfH: number }
+const FLOOR_NORM: { cx: number; cy: number; halfW: number; halfH: number } = {
+  cx: 0.5, cy: 0.64, halfW: 0.33, halfH: 0.22,
+}
+
+function roomFloor(roomId: string): FloorDiamond | null {
+  const b = ROOM_BOXES[roomId]
+  if (!b) return null
+  const bx = b.x - b.w / 2
+  const by = b.y - b.h / 2
+  return {
+    cx: bx + FLOOR_NORM.cx * b.w,
+    cy: by + FLOOR_NORM.cy * b.h,
+    halfW: FLOOR_NORM.halfW * b.w,
+    halfH: FLOOR_NORM.halfH * b.h,
+  }
+}
+
+// Keep-out zone around furniture that sits ON the floor diamond (the specimen
+// tank in research and the radar dish in radar are dead-centre of their
+// floors), so crew circle them instead of standing inside them. Wall-mounted
+// pieces (furnace, vault) are already outside the floor diamond, so they need
+// no separate zone. Normalized (0–1) room-box coords + radius in canvas units.
 const FOCAL_POINT: Record<string, { nx: number; ny: number; r: number }> = {
-  workshop: { nx: 0.75, ny: 0.4, r: 34 },  // furnace + anvil, right side
-  research: { nx: 0.5, ny: 0.51, r: 24 },  // specimen tank, centred
-  treasury: { nx: 0.78, ny: 0.33, r: 30 }, // vault wheel, right side
-  radar: { nx: 0.48, ny: 0.52, r: 34 },    // dish + floor radar, centred
+  research: { nx: 0.5, ny: 0.58, r: 22 }, // specimen tank
+  radar: { nx: 0.48, ny: 0.6, r: 24 },    // radar dish
 }
 
 function roomKeepOut(roomId: string): { cx: number; cy: number; r: number } | null {
@@ -1084,6 +1103,7 @@ export function CommandMap({
         <AgentsLayer
           agents={agents}
           boundsOf={roomInnerBounds}
+          floorOf={roomFloor}
           keepOutOf={roomKeepOut}
           colorOf={roomColorOf}
           statusColorOf={statusColorOf}
