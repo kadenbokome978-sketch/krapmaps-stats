@@ -574,6 +574,17 @@ function RoomAmbient({ roomId, bx, by, w, h }: {
 // connects. Rendered as a bright break in the wall with a glowing doorframe
 // and a soft pulsing floor-light, so each room reads as having a real entrance.
 // ─────────────────────────────────────────────
+// Each room's illustrated door isn't drawn dead-center in its art - measured
+// directly from the source images (as a fraction of room width/height,
+// offset from centre) so the glowing threshold actually sits on top of the
+// painted doorway instead of floating over a wall.
+const DOOR_OFFSET: Record<string, number> = {
+  workshop: -0.14,
+  radar: -0.085,
+  treasury: -0.04,
+  research: 0,
+}
+
 function Doorway({ roomId, color }: { roomId: string; color: string }) {
   const b = ROOM_BOXES[roomId]
   if (!b) return null
@@ -586,21 +597,24 @@ function Doorway({ roomId, color }: { roomId: string; color: string }) {
     roomId === "treasury" ? "left" :
     "right" // research
   const DW = 30 // doorway width
+  const offset = DOOR_OFFSET[roomId] || 0
+  const cx = b.x + offset * b.w // door centre x, for top/bottom rooms
+  const cy = b.y + offset * b.h // door centre y, for left/right rooms
 
   // Compute the door segment endpoints + an inward glow rectangle.
   let x1 = 0, y1 = 0, x2 = 0, y2 = 0, gx = 0, gy = 0, gw = 0, gh = 0
   if (side === "bottom") {
-    x1 = b.x - DW / 2; y1 = by + b.h; x2 = b.x + DW / 2; y2 = by + b.h
-    gx = b.x - DW / 2; gy = by + b.h - 10; gw = DW; gh = 12
+    x1 = cx - DW / 2; y1 = by + b.h; x2 = cx + DW / 2; y2 = by + b.h
+    gx = cx - DW / 2; gy = by + b.h - 10; gw = DW; gh = 12
   } else if (side === "top") {
-    x1 = b.x - DW / 2; y1 = by; x2 = b.x + DW / 2; y2 = by
-    gx = b.x - DW / 2; gy = by - 2; gw = DW; gh = 12
+    x1 = cx - DW / 2; y1 = by; x2 = cx + DW / 2; y2 = by
+    gx = cx - DW / 2; gy = by - 2; gw = DW; gh = 12
   } else if (side === "left") {
-    x1 = bx; y1 = b.y - DW / 2; x2 = bx; y2 = b.y + DW / 2
-    gx = bx - 2; gy = b.y - DW / 2; gw = 12; gh = DW
+    x1 = bx; y1 = cy - DW / 2; x2 = bx; y2 = cy + DW / 2
+    gx = bx - 2; gy = cy - DW / 2; gw = 12; gh = DW
   } else { // right
-    x1 = bx + b.w; y1 = b.y - DW / 2; x2 = bx + b.w; y2 = b.y + DW / 2
-    gx = bx + b.w - 10; gy = b.y - DW / 2; gw = 12; gh = DW
+    x1 = bx + b.w; y1 = cy - DW / 2; x2 = bx + b.w; y2 = cy + DW / 2
+    gx = bx + b.w - 10; gy = cy - DW / 2; gw = 12; gh = DW
   }
 
   return (
