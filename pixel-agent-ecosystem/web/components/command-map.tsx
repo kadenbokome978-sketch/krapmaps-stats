@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from "react"
 import type { Agent, Room } from "@/lib/agent-data"
 import { ROOMS, STATUS_COLORS } from "@/lib/agent-data"
-import { AgentsLayer, type Bounds } from "./agents-layer"
+import { AgentsLayer, type Bounds, type MeetingSeat } from "./agents-layer"
 
 // ─────────────────────────────────────────────
 // Layout constants — 780 × 560 viewBox
@@ -831,6 +831,22 @@ export function CommandMap({
   const svgRef = useRef<SVGSVGElement>(null)
   const rooms = ROOMS.filter((r) => r.id !== "bridge")
 
+  // ── Meeting: gather all agents around the control-centre table. ──
+  const [meeting, setMeeting] = useState(false)
+  // Seats evenly ringed around the hub table; each faces inward. Recomputed
+  // from the current roster so any number of agents spreads out cleanly.
+  const meetingSeats: Record<string, MeetingSeat> = {}
+  {
+    const n = Math.max(1, agents.length)
+    const rx = 54, ry = 33
+    agents.forEach((a, i) => {
+      const ang = (-90 + (360 / n) * i) * (Math.PI / 180)
+      const x = HUB.x + rx * Math.cos(ang)
+      const y = HUB.y + ry * Math.sin(ang)
+      meetingSeats[a.id] = { x, y, face: x <= HUB.x ? 1 : -1 }
+    })
+  }
+
   // ── Camera: scale + translate (in % of container), applied via CSS transform.
   const [cam, setCam] = useState({ scale: 1, x: 0, y: 0 })
   const drag = useRef<{ active: boolean; sx: number; sy: number; ox: number; oy: number }>({
@@ -1130,6 +1146,8 @@ export function CommandMap({
           statusColorOf={statusColorOf}
           selectedAgent={selectedAgent}
           onSelectAgent={onSelectAgent}
+          meetingActive={meeting}
+          meetingSeatOf={(id) => meetingSeats[id] ?? null}
         />
 
         {/* ── Drama: periodic activity bursts pinging out of active rooms ── */}
@@ -1181,6 +1199,28 @@ export function CommandMap({
           </span>
         </div>
       )}
+
+      {/* ── Call-meeting button, centred on the control-centre hub ── */}
+      <button
+        type="button"
+        aria-label={meeting ? "End meeting" : "Call all agents to a meeting"}
+        aria-pressed={meeting}
+        onClick={() => setMeeting((m) => !m)}
+        className="absolute left-1/2 top-1/2 z-30 flex -translate-x-1/2 -translate-y-1/2 items-center gap-1.5 rounded-full px-3 py-1.5 font-mono text-[10px] font-bold tracking-widest transition-colors"
+        style={{
+          background: meeting ? "rgba(40,8,10,0.9)" : "rgba(4,18,12,0.9)",
+          border: `1px solid ${meeting ? "rgba(255,90,90,0.85)" : "rgba(57,255,143,0.75)"}`,
+          color: meeting ? "#ff8a8a" : "#39ff8f",
+          boxShadow: meeting ? "0 0 14px rgba(255,90,90,0.4)" : "0 0 14px rgba(57,255,143,0.35)",
+          animation: meeting ? "neon-pulse 1.4s infinite" : undefined,
+        }}
+      >
+        <span
+          className="inline-block h-2 w-2 rounded-full"
+          style={{ background: meeting ? "#ff5a5a" : "#39ff8f", boxShadow: `0 0 6px ${meeting ? "#ff5a5a" : "#39ff8f"}` }}
+        />
+        {meeting ? "END MEETING" : "CALL MEETING"}
+      </button>
 
       {/* ── Zoom controls (interaction) ── */}
       <div className="absolute bottom-3 right-3 z-20 flex flex-col gap-1">
