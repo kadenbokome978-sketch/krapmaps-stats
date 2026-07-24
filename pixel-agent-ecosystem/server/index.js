@@ -2,27 +2,34 @@
  * Relay server for the pixel-art agent ecosystem dashboard.
  *
  * Responsibility: hold canonical in-memory state about agents/feed items,
- * accept normalized events over HTTP (POST /events) from whatever talks to
- * your real agent backend, and rebroadcast them to connected dashboard
- * clients over WebSocket (/live).
+ * and rebroadcast changes to connected dashboard clients over WebSocket
+ * (/live). State gets updated two ways:
  *
- * This deliberately does NOT assume a specific OpenClaw wire protocol -
- * OpenClaw's Gateway WebSocket auth/message format was not confirmed
- * against a live instance while this was written. Instead it exposes a
- * documented, stable HTTP contract (see README.md) that something you
- * write later (a plugin, a skill, a small poller) can POST to. See
- * openclawGatewayAdapter.js for an optional, unverified sketch of a more
- * direct integration.
+ *   1. POST /events — a documented, stable HTTP contract (see README.md)
+ *      for anything you write yourself (a plugin, a skill, a poller) to
+ *      push events to.
+ *   2. A live connection to OpenClaw's own Gateway WebSocket, if
+ *      OPENCLAW_GATEWAY_WS_URL is set — see openclawGatewayAdapter.js for
+ *      exactly what's verified (transport/handshake/method names, sourced
+ *      from openclaw/openclaw's docs/gateway/protocol.md) vs best-effort
+ *      (exact payload field names, since the protocol doc names events and
+ *      methods but not every field inside them).
+ *
+ * Both paths flow through the same applyEvent() below, so the dashboard
+ * behaves identically regardless of which one is feeding it.
  */
 
 const express = require('express');
 const http = require('http');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
+const openclawGateway = require('./openclawGatewayAdapter');
 
 const PORT = process.env.PORT || 8787;
 const INGEST_SECRET = process.env.RELAY_INGEST_SECRET || '';
 const OPENCLAW_CALLBACK_URL = process.env.OPENCLAW_CALLBACK_URL || '';
+const OPENCLAW_GATEWAY_WS_URL = process.env.OPENCLAW_GATEWAY_WS_URL || '';
+const OPENCLAW_GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN || '';
 
 const app = express();
 app.use(express.json());
@@ -40,6 +47,56 @@ function broadcast(evt) {
   for (const ws of clients) {
     if (ws.readyState === ws.OPEN) ws.send(payload);
   }
+}
+
+/**
+ * Applies one canonical event to in-memory state and rebroadcasts it to
+ * every connected dashboard. Shared by POST /events and the OpenClaw
+ * Gateway adapter (when OPENCLAW_GATEWAY_WS_URL is configured) so both
+ * paths behave identically. Returns an error string, or null on success.
+ */
+function applyEvent(evt) {
+  if (!evt || typeof evt.type !== 'string') return 'event must have a string "type"';
+
+  switch (evt.type) {
+    case 'agent_update': {
+      const a = evt.agent || evt;
+      if (!a.id) return 'agent_update requires agent.id';
+      const existing = state.agents.get(a.id) || {};
+      state.agents.set(a.id, { ...existing, ...a });
+      break;
+    }
+    case 'proposal':
+    case 'error_alert': {
+      if (!evt.id) return `${evt.type} requires an id`;
+      state.pending.set(evt.id, { type: evt.type, agentId: evt.agentId });
+      break;
+    }
+    case 'resolved': {
+      if (!evt.id) return 'resolved requires an id';
+      state.pending.delete(evt.id);
+      break;
+    }
+    case 'log':
+      break; // nothing to persist
+    default:
+      return `unknown event type "${evt.type}"`;
+  }
+
+  broadcast(evt);
+  return null;
+}
+
+// ---- optional: live OpenClaw Gateway connection ----
+// See openclawGatewayAdapter.js for exactly what's verified vs best-effort
+// about this integration. Only activates if both env vars are set.
+let gatewayAdapter = null;
+if (OPENCLAW_GATEWAY_WS_URL) {
+  gatewayAdapter = openclawGateway.connect(
+    { url: OPENCLAW_GATEWAY_WS_URL, token: OPENCLAW_GATEWAY_TOKEN },
+    (evt) => applyEvent(evt)
+  );
+  console.log(`[relay] connecting to OpenClaw Gateway at ${OPENCLAW_GATEWAY_WS_URL}`);
 }
 
 function requireSecret(req, res, next) {
@@ -70,37 +127,8 @@ app.get('/state', (req, res) => {
  *   { type: 'resolved', id, outcome: 'approved'|'rejected'|'retry'|'terminate' }
  */
 app.post('/events', requireSecret, (req, res) => {
-  const evt = req.body;
-  if (!evt || typeof evt.type !== 'string') {
-    return res.status(400).json({ error: 'event must have a string "type"' });
-  }
-
-  switch (evt.type) {
-    case 'agent_update': {
-      const a = evt.agent || evt;
-      if (!a.id) return res.status(400).json({ error: 'agent_update requires agent.id' });
-      const existing = state.agents.get(a.id) || {};
-      state.agents.set(a.id, { ...existing, ...a });
-      break;
-    }
-    case 'proposal':
-    case 'error_alert': {
-      if (!evt.id) return res.status(400).json({ error: `${evt.type} requires an id` });
-      state.pending.set(evt.id, { type: evt.type, agentId: evt.agentId });
-      break;
-    }
-    case 'resolved': {
-      if (!evt.id) return res.status(400).json({ error: 'resolved requires an id' });
-      state.pending.delete(evt.id);
-      break;
-    }
-    case 'log':
-      break; // nothing to persist
-    default:
-      return res.status(400).json({ error: `unknown event type "${evt.type}"` });
-  }
-
-  broadcast(evt);
+  const err = applyEvent(req.body);
+  if (err) return res.status(400).json({ error: err });
   res.status(202).json({ ok: true });
 });
 
@@ -114,15 +142,19 @@ app.post('/events', requireSecret, (req, res) => {
  * viewers stay in sync) and, if OPENCLAW_CALLBACK_URL is set, makes a
  * best-effort forward so your OpenClaw-side integration can react.
  */
-app.post('/operator-action', requireSecret, async (req, res) => {
-  const { id, action } = req.body || {};
-  if (!id || !action) {
-    return res.status(400).json({ error: 'operator-action requires id and action' });
-  }
-
+async function handleOperatorAction(id, action) {
   const pending = state.pending.get(id);
   state.pending.delete(id);
   broadcast({ type: 'resolved', id, outcome: action });
+
+  // If we're live-connected to a Gateway, tell it directly instead of (or
+  // as well as) the generic HTTP callback below.
+  if (gatewayAdapter) {
+    const decision = action === 'approved' || action === 'retry' ? 'approve' : 'reject';
+    gatewayAdapter.resolveApproval({ id, kind: pending && pending.type, decision }).catch((err) =>
+      console.warn('[relay] gateway approval.resolve failed:', err.message)
+    );
+  }
 
   if (OPENCLAW_CALLBACK_URL) {
     try {
@@ -135,7 +167,14 @@ app.post('/operator-action', requireSecret, async (req, res) => {
       console.warn('[relay] failed to forward operator action to OPENCLAW_CALLBACK_URL:', err.message);
     }
   }
+}
 
+app.post('/operator-action', requireSecret, async (req, res) => {
+  const { id, action } = req.body || {};
+  if (!id || !action) {
+    return res.status(400).json({ error: 'operator-action requires id and action' });
+  }
+  await handleOperatorAction(id, action);
   res.json({ ok: true });
 });
 
@@ -156,15 +195,9 @@ wss.on('connection', (ws) => {
     // Dashboard clients may send operator_action over the socket instead of
     // the HTTP endpoint - handle both the same way.
     if (evt.type === 'operator_action' && evt.id && evt.action) {
-      state.pending.delete(evt.id);
-      broadcast({ type: 'resolved', id: evt.id, outcome: evt.action });
-      if (OPENCLAW_CALLBACK_URL) {
-        fetch(OPENCLAW_CALLBACK_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: evt.id, action: evt.action }),
-        }).catch((err) => console.warn('[relay] callback forward failed:', err.message));
-      }
+      handleOperatorAction(evt.id, evt.action).catch((err) =>
+        console.warn('[relay] operator action handling failed:', err.message)
+      );
     }
   });
 

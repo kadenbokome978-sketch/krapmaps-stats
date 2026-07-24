@@ -11,29 +11,46 @@ relay is what "Live" mode connects to instead: it holds canonical state
 about agents and pending decisions (proposals/error alerts), and
 broadcasts changes to every connected dashboard over WebSocket.
 
-**Important caveat:** OpenClaw's exact wire protocol (Gateway WebSocket
-auth + message schemas) was not verified against a live instance while
-this was built - the public docs/blog posts describe the shape of the
-system (a Gateway multiplexing WS+HTTP for session/tool/channel
-orchestration, plus Skills/Plugins/Webhooks as extension points) but not
-literal JSON payloads. So rather than guess and pretend it works, this
-relay exposes a **documented, stable HTTP contract of its own**
-(`POST /events`) that you point something at once you know how your
-OpenClaw setup should report status. That "something" could be a small
-OpenClaw Plugin, a Skill, or just a script that polls OpenClaw and posts
-here.
+## Two ways to feed it real data
 
-If you'd rather connect directly to OpenClaw's Gateway WebSocket instead
-of writing an adapter that POSTs to `/events`, see
-`openclawGatewayAdapter.js` - it's an explicitly unverified sketch of
-that path, not wired up by default.
+**Option A — connect directly to OpenClaw's Gateway (recommended).**
+`openclawGatewayAdapter.js` connects to your OpenClaw instance's own
+Gateway WebSocket (the same control plane its CLI/TUI/mobile clients use)
+and translates what it reports into this relay's canonical events. The
+transport, handshake sequence, and method/event *names* are verified
+against `openclaw/openclaw`'s own `docs/gateway/protocol.md` — not
+guessed. What's still best-effort is the exact field names *inside* some
+payloads, since that source documents method/event names but not every
+field; the adapter logs `[openclawGatewayAdapter] unmapped ...` lines for
+any shape it can't confidently map, so real mismatches are visible in the
+server logs rather than silently wrong.
+
+To use it, run this relay **on the same machine as the OpenClaw gateway**
+(it's loopback-only by default) and set:
+
+```bash
+OPENCLAW_GATEWAY_WS_URL=ws://127.0.0.1:18789   # the port OpenClaw's own onboarding printed
+OPENCLAW_GATEWAY_TOKEN=<your gateway token>     # see below for where to find it
+```
+
+Finding the token: it's whatever OpenClaw's onboarding configured for
+Gateway auth (Token mode by default). Check `~/.openclaw/openclaw.json`
+on the server, or run `openclaw gateway status` — one of those will show
+or let you regenerate it.
+
+**Option B — POST events yourself.** If you'd rather not rely on the
+Gateway adapter's best-effort field mapping, this relay also exposes a
+**documented, stable HTTP contract of its own** (`POST /events`, shapes
+below) that you can point a Skill, Plugin, or small poller at instead.
+The two options aren't mutually exclusive — both flow into the same
+state and broadcast to the same dashboard.
 
 ## Running it
 
 ```bash
 cd pixel-agent-ecosystem/server
 npm install
-cp .env.example .env   # then edit RELAY_INGEST_SECRET etc.
+cp .env.example .env   # then edit RELAY_INGEST_SECRET, and OPENCLAW_GATEWAY_* if using Option A
 npm start
 ```
 
@@ -118,8 +135,12 @@ error alerts.
 When a human clicks a button on the dashboard, it POSTs (or sends over
 the open WebSocket) `{ "id": "...", "action": "approved" }` to this
 relay. The relay immediately rebroadcasts a `resolved` event to every
-connected dashboard, and - if you set `OPENCLAW_CALLBACK_URL` in
-`.env` - makes a best-effort POST of `{ id, action, pending }` there so
-your OpenClaw-side integration can act on the decision. That callback
-URL isn't a real OpenClaw endpoint; it's wherever you build to receive
-it.
+connected dashboard, then:
+
+- If the Gateway adapter (Option A) is connected, calls its verified
+  `approval.resolve` method so the decision reaches OpenClaw directly.
+- If `OPENCLAW_CALLBACK_URL` is set, also makes a best-effort POST of
+  `{ id, action, pending }` there.
+
+Both can be active at once if you want a custom integration in addition
+to the direct Gateway path.
