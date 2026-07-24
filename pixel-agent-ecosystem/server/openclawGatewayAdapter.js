@@ -54,9 +54,12 @@
  */
 
 const WebSocket = require('ws');
+const fs = require('fs');
+const path = require('path');
 
 const DEFAULT_ROOM = process.env.OPENCLAW_DEFAULT_ROOM || 'bridge';
 const POLL_INTERVAL_MS = 10_000;
+const UNMAPPED_LOG_PATH = path.join(__dirname, 'unmapped-events.log');
 
 let reqSeq = 0;
 function nextId() {
@@ -107,7 +110,15 @@ function connect({ url, token }, onEvent) {
     const key = tag + ':' + Object.keys(payload || {}).sort().join(',');
     if (loggedUnmapped.has(key)) return;
     loggedUnmapped.add(key);
-    console.log(`[openclawGatewayAdapter] unmapped ${tag} payload (fields: ${Object.keys(payload || {}).join(', ') || 'none'}):`, JSON.stringify(payload).slice(0, 500));
+    console.log(`[openclawGatewayAdapter] unmapped ${tag} - full payload written to ${UNMAPPED_LOG_PATH} (fields: ${Object.keys(payload || {}).join(', ') || 'none'})`);
+    try {
+      fs.appendFileSync(
+        UNMAPPED_LOG_PATH,
+        `\n===== ${new Date().toISOString()} ${tag} =====\n${JSON.stringify(payload, null, 2)}\n`
+      );
+    } catch (err) {
+      console.warn('[openclawGatewayAdapter] could not write unmapped-events.log:', err.message);
+    }
   }
 
   // Best-effort field extraction — see file header re: unverified shapes.
@@ -163,6 +174,20 @@ function connect({ url, token }, onEvent) {
       rows = [];
     }
 
+    applyRows(rows, 'agents.list/sessions.list row');
+
+    // Session index changes (new/removed sessions) going forward.
+    send('sessions.subscribe', {}).catch((err) =>
+      console.warn('[openclawGatewayAdapter] sessions.subscribe failed:', err.message)
+    );
+  }
+
+  // Shared by seedAndSubscribe (agents.list/sessions.list rows) and the
+  // "health" event handler (its payload includes live agents/sessions
+  // arrays directly - the gateway pushes this proactively on connect,
+  // which turned out to be a more reliable state source than per-session
+  // sessions.messages.subscribe, whose exact params schema isn't settled).
+  function applyRows(rows, unmappedTag) {
     for (const row of rows) {
       const agent = agentFromRow(row);
       if (agent) {
@@ -175,19 +200,24 @@ function connect({ url, token }, onEvent) {
           );
         }
       } else {
-        logUnmapped('agents.list/sessions.list row', row);
+        logUnmapped(unmappedTag, row);
       }
     }
-
-    // Session index changes (new/removed sessions) going forward.
-    send('sessions.subscribe', {}).catch((err) =>
-      console.warn('[openclawGatewayAdapter] sessions.subscribe failed:', err.message)
-    );
   }
 
   function handleEvent(evt) {
     const { event, payload } = evt;
     switch (event) {
+      case 'health': {
+        // Proactively pushed by the gateway; contains live agents/sessions
+        // state directly, so use it the same way as a fresh agents.list.
+        const agentRows = pick(payload, ['agents'], []);
+        const sessionRows = pick(payload, ['sessions'], []);
+        if (Array.isArray(agentRows) && agentRows.length) applyRows(agentRows, 'health.agents row');
+        if (Array.isArray(sessionRows) && sessionRows.length) applyRows(sessionRows, 'health.sessions row');
+        if (!Array.isArray(agentRows) || !Array.isArray(sessionRows)) logUnmapped('health', payload);
+        break;
+      }
       case 'sessions.changed': {
         // Re-seed on any index change rather than parse the diff shape -
         // simplest thing that's correct given the payload isn't verified.
