@@ -209,13 +209,17 @@ function connect({ url, token }, onEvent) {
     const { event, payload } = evt;
     switch (event) {
       case 'health': {
-        // Proactively pushed by the gateway; contains live agents/sessions
-        // state directly, so use it the same way as a fresh agents.list.
+        // Proactively pushed by the gateway; payload.agents is a real array
+        // (confirmed against a live gateway) - use it the same way as a
+        // fresh agents.list. payload.sessions is NOT a row list despite the
+        // name - it's a summary object ({path, count, recent}), so there's
+        // nothing row-shaped to extract from it.
         const agentRows = pick(payload, ['agents'], []);
-        const sessionRows = pick(payload, ['sessions'], []);
-        if (Array.isArray(agentRows) && agentRows.length) applyRows(agentRows, 'health.agents row');
-        if (Array.isArray(sessionRows) && sessionRows.length) applyRows(sessionRows, 'health.sessions row');
-        if (!Array.isArray(agentRows) || !Array.isArray(sessionRows)) logUnmapped('health', payload);
+        if (Array.isArray(agentRows) && agentRows.length) {
+          applyRows(agentRows, 'health.agents row');
+        } else {
+          logUnmapped('health (no usable agents array)', payload);
+        }
         break;
       }
       case 'sessions.changed': {
