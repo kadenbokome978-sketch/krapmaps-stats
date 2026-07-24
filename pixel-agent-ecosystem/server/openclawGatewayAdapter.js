@@ -25,6 +25,14 @@
  *   - Approval response: approval.resolve (params include an approval id,
  *     a "kind", and a decision); exec.approval.resolve for plugin-defined
  *     exec approvals specifically.
+ *   - client.id / client.mode are NOT free-form strings, despite what the
+ *     protocol doc's own example implies (it shows id:"cli", mode:"operator"
+ *     - "operator" is actually the *role*, not a valid client.mode; a live
+ *     gateway rejects it). The real enums are defined in
+ *     packages/gateway-protocol/src/client-info.ts: GATEWAY_CLIENT_IDS
+ *     (this adapter uses "gateway-client", the value that contract defines
+ *     for exactly this kind of integration) and GATEWAY_CLIENT_MODES (this
+ *     adapter uses "backend"). platform is free-form (e.g. "linux").
  *
  * STILL UNVERIFIED (the protocol doc describes method/event *names* but not
  * every field inside their payloads): the exact keys inside an agents.list /
@@ -269,7 +277,12 @@ function connect({ url, token }, onEvent) {
         params: {
           minProtocol: 4,
           maxProtocol: 4,
-          client: { id: 'pixel-agent-ecosystem-relay', version: '0.1.0', platform: 'node', mode: 'operator' },
+          // VERIFIED against packages/gateway-protocol/src/client-info.ts:
+          // client.id must be one of GATEWAY_CLIENT_IDS - "gateway-client" is
+          // the value that contract literally defines for this kind of
+          // integration. client.mode must be one of GATEWAY_CLIENT_MODES -
+          // "backend" fits a headless service best. platform is free-form.
+          client: { id: 'gateway-client', version: '0.1.0', platform: 'linux', mode: 'backend' },
           role: 'operator',
           scopes: ['operator.read', 'operator.write'],
           auth: token ? { token } : undefined,
