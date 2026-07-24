@@ -256,7 +256,11 @@ function connect({ url, token }, onEvent) {
           seedAndSubscribe().catch((err) => console.warn('[openclawGatewayAdapter] seed failed:', err.message));
           pollTimer = setInterval(() => seedAndSubscribe().catch(() => {}), POLL_INTERVAL_MS);
         },
-        reject: (err) => console.error('[openclawGatewayAdapter] connect handshake rejected:', err.message || err),
+        reject: (err) => console.error(
+          '[openclawGatewayAdapter] connect handshake rejected:',
+          err.message || err,
+          err.detail ? '\nfull server error detail: ' + JSON.stringify(err.detail, null, 2) : ''
+        ),
       });
       ws.send(JSON.stringify({
         type: 'req',
@@ -277,8 +281,13 @@ function connect({ url, token }, onEvent) {
     if (msg.type === 'res' && msg.id && pending.has(msg.id)) {
       const { resolve, reject } = pending.get(msg.id);
       pending.delete(msg.id);
-      if (msg.ok) resolve(msg.payload);
-      else reject(new Error(msg.error && msg.error.message ? msg.error.message : 'request failed'));
+      if (msg.ok) {
+        resolve(msg.payload);
+      } else {
+        const err = new Error((msg.error && msg.error.message) || 'request failed');
+        err.detail = msg.error; // full server error object, e.g. AJV-style {params:{allowedValues:[...]}}
+        reject(err);
+      }
       return;
     }
 
