@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from "react"
 import type { Agent, Room } from "@/lib/agent-data"
 import { ROOMS, STATUS_COLORS } from "@/lib/agent-data"
-import { AgentsLayer, type Bounds } from "./agents-layer"
+import { AgentsLayer, type Bounds, type MeetingSeat } from "./agents-layer"
 
 // ─────────────────────────────────────────────
 // Layout constants — 780 × 560 viewBox
@@ -66,6 +66,17 @@ const CORRIDORS: Record<string, {
     a: HUB.x - HUB.r + 8,
     b: ROOM_BOXES.research.x + ROOM_BOXES.research.w / 2 - 6,
   },
+}
+
+// The two ends of a room's corridor as points — hub side and room side — so
+// meeting routes can send agents along the walkway (never across open space).
+function corridorEnds(roomId: string): { hubEnd: { x: number; y: number }; roomEnd: { x: number; y: number } } | null {
+  const c = CORRIDORS[roomId]
+  if (!c) return null
+  if (c.orient === "v") {
+    return { hubEnd: { x: c.cross, y: c.a }, roomEnd: { x: c.cross, y: c.b } }
+  }
+  return { hubEnd: { x: c.a, y: c.cross }, roomEnd: { x: c.b, y: c.cross } }
 }
 
 type RoomId = "bridge" | "workshop" | "treasury" | "radar" | "research"
@@ -831,6 +842,22 @@ export function CommandMap({
   const svgRef = useRef<SVGSVGElement>(null)
   const rooms = ROOMS.filter((r) => r.id !== "bridge")
 
+  // ── Meeting: gather all agents around the control-centre table. ──
+  const [meeting, setMeeting] = useState(false)
+  // Seats evenly ringed around the hub table; each faces inward. Recomputed
+  // from the current roster so any number of agents spreads out cleanly.
+  const meetingSeats: Record<string, MeetingSeat> = {}
+  {
+    const n = Math.max(1, agents.length)
+    const rx = 54, ry = 33
+    agents.forEach((a, i) => {
+      const ang = (-90 + (360 / n) * i) * (Math.PI / 180)
+      const x = HUB.x + rx * Math.cos(ang)
+      const y = HUB.y + ry * Math.sin(ang)
+      meetingSeats[a.id] = { x, y, face: x <= HUB.x ? 1 : -1 }
+    })
+  }
+
   // ── Camera: scale + translate (in % of container), applied via CSS transform.
   const [cam, setCam] = useState({ scale: 1, x: 0, y: 0 })
   const drag = useRef<{ active: boolean; sx: number; sy: number; ox: number; oy: number }>({
@@ -1130,6 +1157,9 @@ export function CommandMap({
           statusColorOf={statusColorOf}
           selectedAgent={selectedAgent}
           onSelectAgent={onSelectAgent}
+          meetingActive={meeting}
+          meetingSeatOf={(id) => meetingSeats[id] ?? null}
+          corridorEndsOf={corridorEnds}
         />
 
         {/* ── Drama: periodic activity bursts pinging out of active rooms ── */}
@@ -1182,8 +1212,30 @@ export function CommandMap({
         </div>
       )}
 
-      {/* ── Zoom controls (interaction) ── */}
-      <div className="absolute bottom-3 right-3 z-20 flex flex-col gap-1">
+      {/* ── Call-meeting push-button, centred on the control-centre table.
+          Green when idle, red while a meeting is in progress; no label. ── */}
+      <button
+        type="button"
+        aria-label={meeting ? "End meeting" : "Call all agents to a meeting"}
+        aria-pressed={meeting}
+        title={meeting ? "End meeting" : "Call meeting"}
+        onClick={() => setMeeting((m) => !m)}
+        className="absolute left-1/2 top-1/2 z-30 h-6 w-6 -translate-x-1/2 -translate-y-1/2 rounded-full transition-colors"
+        style={{
+          background: meeting
+            ? "radial-gradient(circle at 35% 30%, #ffb0b0, #e8283a 58%, #a01020)"
+            : "radial-gradient(circle at 35% 30%, #b6ffd4, #24d96c 55%, #0f9a44)",
+          border: `1px solid ${meeting ? "rgba(255,130,130,0.95)" : "rgba(110,255,170,0.95)"}`,
+          boxShadow: meeting
+            ? "0 0 16px rgba(255,60,70,0.6), inset 0 1px 2px rgba(255,255,255,0.45)"
+            : "0 0 16px rgba(40,235,115,0.55), inset 0 1px 2px rgba(255,255,255,0.45)",
+          animation: meeting ? "neon-pulse 1.2s infinite" : undefined,
+        }}
+      />
+
+      {/* ── Zoom controls (interaction) — top-right on mobile so the comms
+          panel edge never rides over them, bottom-right on desktop ── */}
+      <div className="absolute right-3 top-3 z-20 flex flex-col gap-1 md:bottom-3 md:top-auto">
         {[
           { label: "+", fn: () => zoomBy(0.3), aria: "Zoom in" },
           { label: "−", fn: () => zoomBy(-0.3), aria: "Zoom out" },

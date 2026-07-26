@@ -154,9 +154,9 @@ export function RosterBar({ agents, selectedAgent, onSelectAgent }: RosterBarPro
         ))}
       </div>
 
-      {/* Right system status */}
+      {/* Right system status (hidden on mobile — duplicates the top bar) */}
       <div
-        className="flex flex-col justify-center gap-0.5 pl-3 shrink-0"
+        className="hidden md:flex flex-col justify-center gap-0.5 pl-3 shrink-0"
         style={{ borderLeft: "1px solid rgba(255,255,255,0.05)" }}
       >
         <div className="font-mono text-[8px] tracking-[0.2em] text-[#4a5570] mb-1">SYSTEM</div>
