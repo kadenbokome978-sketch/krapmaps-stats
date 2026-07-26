@@ -73,6 +73,14 @@ const DEFAULT_ROOM = process.env.OPENCLAW_DEFAULT_ROOM || 'bridge';
 const POLL_INTERVAL_MS = 10_000;
 const UNMAPPED_LOG_PATH = path.join(__dirname, 'unmapped-events.log');
 
+// Cosmetic display-name overrides, keyed by the agent's raw id. Applied only
+// when the gateway didn't give us a real label of its own (i.e. the resolved
+// name is just the bare id) - a genuinely named agent is never overridden.
+// The dashboard picks a sprite deterministically by hashing the id
+// (SPRITE_POOL in web/lib/relay.ts), so "main" always renders with the
+// Slaymal sprite art - this makes the label match what's already on screen.
+const AGENT_DISPLAY_NAMES = { main: 'Slaymal' };
+
 let reqSeq = 0;
 function nextId() {
   reqSeq += 1;
@@ -159,9 +167,11 @@ function connect({ url, token }, onEvent) {
   function agentFromRow(row) {
     const id = pick(row, ['id', 'key', 'sessionId', 'agentId', 'sessionKey']);
     if (!id) return null;
+    const idStr = String(id);
+    const rawName = pick(row, ['name', 'label', 'displayName', 'agentName', 'title'], idStr);
     return {
-      id: String(id),
-      name: pick(row, ['name', 'label', 'displayName', 'agentName', 'title'], String(id)),
+      id: idStr,
+      name: rawName === idStr ? (AGENT_DISPLAY_NAMES[idStr] || rawName) : rawName,
       room: pick(row, ['room'], DEFAULT_ROOM),
       status: normalizeStatus(pick(row, ['status', 'state', 'runState'])),
       task: pick(row, ['task', 'currentTask', 'summary', 'lastMessage', 'derivedTitle'], ''),
