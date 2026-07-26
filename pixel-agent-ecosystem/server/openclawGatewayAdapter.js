@@ -17,11 +17,20 @@
  *   - Requests: {type:"req", id, method, params} -> {type:"res", id, ok, payload|error}
  *   - Events:   {type:"event", event, payload, seq?, stateVersion?}
  *   - Discovery methods that exist: sessions.list, agents.list, status, health.
- *   - Subscribe methods: sessions.subscribe (session index changes ->
- *     "sessions.changed" events), sessions.messages.subscribe (per-session
- *     transcript/tool/operation/approval events).
+ *   - sessions.subscribe (session index changes -> "sessions.changed" events)
+ *     is VERIFIED - a live gateway accepts it.
+ *   - "sessions.messages.subscribe" (per-session live transcript/tool
+ *     events), which the protocol doc's prose implied existed, is NOT relied
+ *     on here - a live gateway rejects it with a confusing multi-branch
+ *     validation error, and the real schema source
+ *     (packages/gateway-protocol/src/schema/logs-chat.ts) shows no
+ *     dedicated subscribe method: chat streaming there is a per-call
+ *     chat.send -> event-stream response, not a standing subscription. This
+ *     adapter's live state comes from the proactive "health" event + polling
+ *     instead (see applyRows below) - richer live "what is it doing right
+ *     now" text is a known gap, deliberately left rather than guessed at.
  *   - Event names that exist: session.message, session.operation,
- *     session.tool, session.approval, sessions.changed, chat.
+ *     session.tool, session.approval, sessions.changed, chat, health.
  *   - Approval response: approval.resolve (params include an approval id,
  *     a "kind", and a decision); exec.approval.resolve for plugin-defined
  *     exec approvals specifically.
@@ -34,12 +43,15 @@
  *     for exactly this kind of integration) and GATEWAY_CLIENT_MODES (this
  *     adapter uses "backend"). platform is free-form (e.g. "linux").
  *
- * STILL UNVERIFIED (the protocol doc describes method/event *names* but not
- * every field inside their payloads): the exact keys inside an agents.list /
- * sessions.list row (e.g. whether status is called "status" or "state", how
- * a human-readable "current task" is represented), and the exact fields
- * inside session.tool / session.operation payloads. Rather than fabricate
- * those and silently misreport agent status, this adapter:
+ * A sessions.list/health.agents row's real fields are VERIFIED against
+ * packages/gateway-protocol/src/schema/sessions-row.ts (SessionRow): key,
+ * sessionId, label, displayName, derivedTitle, status ("running"/"done"/...).
+ * Notably there's no dedicated human-readable "current task" field in that
+ * schema - derivedTitle is the closest thing, used as a fallback.
+ *
+ * STILL UNVERIFIED: the exact fields inside session.tool / session.operation
+ * event payloads (no schema found for these specifically). Rather than
+ * fabricate those and silently misreport agent status, this adapter:
  *   1. Tries a handful of plausible field names defensively.
  *   2. Logs the raw payload the first time it sees a shape it can't map, so
  *      you can read real data from your own gateway and tighten the mapping.
@@ -85,7 +97,6 @@ function connect({ url, token }, onEvent) {
   if (!url) throw new Error('openclawGatewayAdapter.connect requires opts.url');
 
   const pending = new Map(); // req id -> { resolve, reject }
-  const knownSessions = new Set();
   const loggedUnmapped = new Set(); // avoid spamming the same unmapped shape
 
   let ws = new WebSocket(url);
@@ -134,19 +145,26 @@ function connect({ url, token }, onEvent) {
     if (['active', 'running', 'working', 'busy'].includes(s)) return 'active';
     if (['error', 'failed', 'crashed'].includes(s)) return 'error';
     if (['paused', 'blocked', 'waiting', 'rate-limited', 'rate_limited'].includes(s)) return 'paused';
-    if (['idle', 'ready'].includes(s)) return 'idle';
+    // "done" is VERIFIED (packages/gateway-protocol/src/schema/sessions-row.ts
+    // SessionRow.status) - a finished session isn't actively working.
+    if (['idle', 'ready', 'done'].includes(s)) return 'idle';
     return 'active'; // OpenClaw agents are working unless we have a reason to think otherwise
   }
 
+  // Field names updated against the real SessionRow schema (VERIFIED,
+  // packages/gateway-protocol/src/schema/sessions-row.ts): key, sessionId,
+  // label, displayName, derivedTitle, status ("running"/"done"/...). There's
+  // no dedicated human-readable "current task" field in that schema - only
+  // derivedTitle comes close, so that's used as the task fallback.
   function agentFromRow(row) {
-    const id = pick(row, ['id', 'sessionId', 'agentId', 'key', 'sessionKey']);
+    const id = pick(row, ['id', 'key', 'sessionId', 'agentId', 'sessionKey']);
     if (!id) return null;
     return {
       id: String(id),
-      name: pick(row, ['name', 'displayName', 'agentName', 'title'], String(id)),
+      name: pick(row, ['name', 'label', 'displayName', 'agentName', 'title'], String(id)),
       room: pick(row, ['room'], DEFAULT_ROOM),
       status: normalizeStatus(pick(row, ['status', 'state', 'runState'])),
-      task: pick(row, ['task', 'currentTask', 'summary', 'lastMessage'], ''),
+      task: pick(row, ['task', 'currentTask', 'summary', 'lastMessage', 'derivedTitle'], ''),
     };
   }
 
@@ -184,21 +202,24 @@ function connect({ url, token }, onEvent) {
 
   // Shared by seedAndSubscribe (agents.list/sessions.list rows) and the
   // "health" event handler (its payload includes live agents/sessions
-  // arrays directly - the gateway pushes this proactively on connect,
-  // which turned out to be a more reliable state source than per-session
-  // sessions.messages.subscribe, whose exact params schema isn't settled).
+  // arrays directly - the gateway pushes this proactively on connect, which
+  // is the actual working state source right now).
+  //
+  // Per-session live message/tool streaming (what would populate richer
+  // live "task" text instead of just presence+status) is NOT wired up here.
+  // "sessions.messages.subscribe" - the method the protocol doc's prose
+  // implied existed - gets rejected by a live gateway with a confusing
+  // multi-branch validation error, and the real schema source
+  // (packages/gateway-protocol/src/schema/logs-chat.ts) shows no dedicated
+  // subscribe method at all: chat streaming there happens via chat.send
+  // returning an event stream per call, not a standing subscription. That's
+  // a different integration shape than this adapter currently has -
+  // deliberately left as a follow-up rather than guessed at further.
   function applyRows(rows, unmappedTag) {
     for (const row of rows) {
       const agent = agentFromRow(row);
       if (agent) {
         onEvent({ type: 'agent_update', agent });
-        const sessionKey = pick(row, ['sessionKey', 'id', 'sessionId'], null);
-        if (sessionKey && !knownSessions.has(sessionKey)) {
-          knownSessions.add(sessionKey);
-          send('sessions.messages.subscribe', { sessionKey, includeApprovals: true }).catch((err) =>
-            console.warn('[openclawGatewayAdapter] subscribe failed for', sessionKey, err.message)
-          );
-        }
       } else {
         logUnmapped(unmappedTag, row);
       }
