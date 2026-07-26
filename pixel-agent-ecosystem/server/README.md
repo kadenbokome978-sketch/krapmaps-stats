@@ -56,15 +56,23 @@ npm start
 
 By default it listens on `:8787` and exposes:
 
-- `GET  /health` - liveness check
-- `GET  /state` - current snapshot as JSON
-- `POST /events` - ingest a canonical event (see below)
+- `GET  /health` - liveness check (unauthenticated - no state exposed)
+- `GET  /state` - current snapshot as JSON (requires the secret)
+- `POST /events` - ingest a canonical event (see below, requires the secret)
 - `POST /operator-action` - forwarded from the dashboard when a human
-  clicks Approve/Reject/Retry/Terminate
-- `WS   /live` - what the dashboard's "Live" mode connects to
+  clicks Approve/Reject/Retry/Terminate (requires the secret)
+- `WS   /live` - what the dashboard's "Live" mode connects to (requires the
+  secret)
+
+If `RELAY_INGEST_SECRET` is set in `.env`, every endpoint above except
+`/health` requires it - either the `x-relay-secret` header (for POST calls
+you script yourself) or a `?secret=` query param (needed for `/live`, since
+a browser's WebSocket API can't send custom headers). This means the relay
+is safe to expose past your firewall/router - the dashboard connects with
+the secret baked into the URL rather than needing an SSH tunnel.
 
 Then in the dashboard, flip the **LIVE FEED** switch in the top bar and
-point the relay URL field at `ws://<host>:8787/live`.
+point the relay URL field at `ws://<host>:8787/live?secret=<your secret>`.
 
 ## Canonical event shapes (`POST /events`)
 

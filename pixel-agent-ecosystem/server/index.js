@@ -99,11 +99,22 @@ if (OPENCLAW_GATEWAY_WS_URL) {
   console.log(`[relay] connecting to OpenClaw Gateway at ${OPENCLAW_GATEWAY_WS_URL}`);
 }
 
+// Constant-time secret check - accepts the x-relay-secret header (existing
+// POST endpoints) or a ?secret= query param (needed for /state from a plain
+// link, and for /live since browser WebSocket can't set custom headers).
+function secretMatches(provided) {
+  if (!INGEST_SECRET) return true; // no secret configured -> open (local/dev use)
+  if (!provided) return false;
+  const a = Buffer.from(String(provided));
+  const b = Buffer.from(INGEST_SECRET);
+  if (a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
 function requireSecret(req, res, next) {
-  if (!INGEST_SECRET) return next(); // no secret configured -> open (local/dev use)
-  const provided = req.header('x-relay-secret');
-  if (provided !== INGEST_SECRET) {
-    return res.status(401).json({ error: 'invalid or missing x-relay-secret header' });
+  const provided = req.header('x-relay-secret') || req.query.secret;
+  if (!secretMatches(provided)) {
+    return res.status(401).json({ error: 'invalid or missing secret (x-relay-secret header or ?secret= query param)' });
   }
   next();
 }
@@ -112,7 +123,7 @@ app.get('/health', (req, res) => {
   res.json({ ok: true, agents: state.agents.size, clients: clients.size });
 });
 
-app.get('/state', (req, res) => {
+app.get('/state', requireSecret, (req, res) => {
   res.json({ type: 'snapshot', agents: Array.from(state.agents.values()) });
 });
 
@@ -181,7 +192,12 @@ app.post('/operator-action', requireSecret, async (req, res) => {
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/live' });
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
+  const { searchParams } = new URL(req.url, 'http://internal');
+  if (!secretMatches(searchParams.get('secret'))) {
+    ws.close(4401, 'unauthorized');
+    return;
+  }
   clients.add(ws);
   ws.send(JSON.stringify({ type: 'snapshot', agents: Array.from(state.agents.values()) }));
 
