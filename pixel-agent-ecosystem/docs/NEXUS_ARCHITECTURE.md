@@ -912,15 +912,30 @@ execution layer gains a real provider-abstraction boundary (still
 self-hosted, still Claude by default) so principle #1 stops being
 aspirational.
 
-**Year 4–5 — Self-hosted operating system.** The Claude Project CEO
-interface — always described as "a temporary interface, not a
-dependency" — is retired in favor of a NEXUS-native surface reading the
-same MCP/vault substrate, closing the last gap between the stated
-long-term target and the actual system. Whether the human-approval gate
-(principle #4) ever relaxes for narrow, well-established categories of
-low-stakes memory is a live question worth revisiting at this point —
-but it is explicitly **not** a decision this document makes; today,
-nothing becomes truth automatically, full stop.
+**Year 4–5 — Self-hosted operating system.** Don't lock this in as "the
+Claude Project gets retired for a NEXUS-native UI" — that names one
+specific outcome when the actual requirement is narrower and more
+durable: **the CEO interface is replaceable.** Principle #1 (provider
+independence) means the whole point is not knowing today which of these
+it ends up being — Claude, OpenAI, Gemini, a local model, or a
+fully custom NEXUS-native UI are all valid landing points, and the
+architecture's job is to make that a swap, not a rewrite, whichever one
+wins. What makes that possible is already established earlier in this
+document, not something new needed for year 4–5: the CEO only ever
+touches the rest of NEXUS through MCP (§5, §7), never through anything
+Claude-Project-specific, so the interface sitting on the human-facing end
+of that connection is free to change without anything else in the
+architecture noticing. The one thing that *is* fixed regardless of which
+interface wins is the governance model behind it — MCP write access
+stays restricted to the Memory Pipeline's service identity (§5), so
+swapping the CEO's interface can never quietly swap in unsupervised
+vault writes along with it.
+
+Whether the human-approval gate (principle #4) ever relaxes for narrow,
+well-established categories of low-stakes memory is a separate, live
+question worth revisiting at this point — but it is explicitly **not**
+a decision this document makes; today, nothing becomes truth
+automatically, full stop.
 
 **Why no major rewrite is needed to get there:** every year above adds a
 layer on top of something that doesn't change — the vault stays git +
