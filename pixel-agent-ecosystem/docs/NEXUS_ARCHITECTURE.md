@@ -1,12 +1,20 @@
 ---
 type: architecture-specification
-status: v1.0-baseline
+status: FROZEN — Phase 1 implementation specification
 date: 2026-08-07
+last-amended: 2026-08-07 (vault location closed)
 author: NEXUS Builder (Lead Software Architect role)
 supersedes: none (first formal specification)
 ---
 
 # NEXUS — Architecture Specification
+
+**This document is frozen.** As of 2026-08-07, with Phase 0 complete and
+the vault location closed out, this is the Phase 1 implementation
+specification — build against it rather than redesigning it. Amending it
+is still possible, but should be a deliberate act (a real architectural
+reason, recorded as a dated change like the one below), not something a
+future chat quietly drifts into while discussing something else.
 
 This document is the versioned contract described in the roadmap's Phase 3:
 the thing a Builder session with zero prior context should be able to read
@@ -363,18 +371,31 @@ the CEO synthesizing a briefing) can now tell current truth from history.
 This is a minimal extension of the existing schema, not a redesign of the
 vault — consistent with the v1.0 instruction not to redesign it.
 
-### Location **[OPEN — the single largest blocker in this document]**
+### Location **[LOCKED — resolved 2026-08-07]**
 
-Where the real vault currently lives, and whether it is already
-git-tracked, was never established anywhere in the design process. It was
-raised and re-raised as the one dependency everything else in Phase 1A
-sits on top of, and the v1.0 instruction that started Phase 0 ("do not
-redesign the vault") did not answer it. **This should be resolved before
-any Phase 1A implementation work starts** — every other item in this
-section is a specification for a system that, as of this document, has
-nowhere to write to. The fallback discussed and not yet acted on: stand up
-a throwaway test vault repo to prove the pipeline end-to-end, then repoint
-it once the real location is known.
+This was the single largest open blocker in this document through Phase 0;
+it is closed as of this amendment.
+
+- **Development**: `C:\Users\<user>\Documents\Obsidian Vault` — the human
+  editing surface. Obsidian is the editor here, not the storage layer;
+  nothing architectural depends on it beyond being a convenient markdown
+  editor pointed at a git working copy.
+- **Production**: a git-tracked clone of the same vault, on the Hetzner
+  server — colocated with OpenClaw and the relay, matching every other
+  piece of NEXUS's execution-side infrastructure. This is what the MCP
+  server (§5) reads and writes against.
+- **Source of truth**: markdown + git, full stop. Development and
+  production are two working copies of the same git history, not two
+  different stores — the development copy's job is to be edited by a
+  human in Obsidian; the production copy's job is to be read/written by
+  the MCP server. Neither is authoritative over the other; git is.
+
+One small operational detail is left for Phase 1 build time rather than
+this document: the exact remote (which git host, what the repo is called)
+that both copies push/pull through. That's a configuration fact to
+confirm when the Hetzner clone is actually stood up (Phase 1 plan, §2,
+build step 1) — it doesn't change anything architectural above, so it
+doesn't block freezing this document.
 
 ---
 
@@ -800,10 +821,11 @@ reads, never through direct access to another Builder's session.
 Ranked roughly by how much they block near-term work versus how far out
 they bite.
 
-1. **Vault location is still unknown.** [§4] This has been the single
-   open blocker through the entire design process and directly blocks
-   Phase 1A. Nothing downstream (MCP, briefing, memory pipeline) can be
-   implemented against a real vault until this closes.
+1. ~~**Vault location is still unknown.**~~ [§4] **Resolved 2026-08-07** —
+   Obsidian vault (development) + git-tracked clone on Hetzner
+   (production), markdown + git as the source of truth. Kept as risk #1's
+   slot rather than deleted, as a record that this was the single largest
+   blocker through Phase 0 and is now closed, not merely forgotten about.
 2. **MCP has no designed security model.** [§5] The relay got one; MCP
    didn't. Left unresolved, the first real MCP client would either ship
    without auth or improvise one under time pressure — worse than
