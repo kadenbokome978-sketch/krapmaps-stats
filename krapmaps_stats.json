@@ -1,16 +1,16 @@
 {
-  "scraped_at": "2026-09-18T15:28:11.023398",
+  "scraped_at": "2026-09-18T20:09:50.101144",
   "tiktok": {
     "followers": 120,
     "total_likes": 7758,
     "video_count": 38,
-    "scraped_at": "2026-09-18T15:28:11.584374"
+    "scraped_at": "2026-09-18T20:09:50.840548"
   },
   "instagram": null,
   "appstore": {
     "app_id": "6755895866",
     "app_name": "KrapMaps",
     "bundle_id": "com.findkrap.krap",
-    "scraped_at": "2026-09-18T15:28:11.932329"
+    "scraped_at": "2026-09-18T20:09:51.091328"
   }
 }
